@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>감정 리포트 | 끼리 챗봇 💬</title>
+  <style>
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      background: linear-gradient(180deg, #a7d8ff, #f0faff);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .report-box {
+      background: #fff;
+      border-radius: 20px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+      width: 500px;
+      padding: 30px 40px;
+      text-align: center;
+      animation: fadeIn 0.6s ease-in-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    h2 {
+      color: #2a6fb4;
+      margin-bottom: 10px;
+    }
+    .username {
+      font-size: 16px;
+      color: #555;
+      margin-bottom: 20px;
+    }
+    .score-box {
+      background: #e9f4ff;
+      border-radius: 15px;
+      padding: 15px;
+      margin: 15px 0;
+      color: #1a4d8f;
+    }
+    .level {
+      font-size: 22px;
+      font-weight: bold;
+      margin-top: 10px;
+    }
+    .advice {
+      font-size: 15px;
+      color: #333;
+      background: #f7faff;
+      border-radius: 10px;
+      padding: 15px;
+      line-height: 1.6;
+      margin-top: 15px;
+    }
+    img {
+      width: 100%;
+      border-radius: 10px;
+      margin-top: 20px;
+    }
+    .btn-area {
+      margin-top: 25px;
+    }
+    a {
+      text-decoration: none;
+      color: white;
+      background: #58aafc;
+      padding: 10px 18px;
+      border-radius: 10px;
+      transition: 0.2s;
+    }
+    a:hover {
+      background: #3d91e0;
+    }
+  </style>
+</head>
+<body>
+  <div class="report-box">
+    <h2>💙 끼리 감정 리포트</h2>
+    <div class="username">안녕하세요, <b>{{ username }}</b> 님!</div>
+    
+    <div class="score-box">
+      최근 7일간의 감정 점수는  
+      <h3>{{ score }}점</h3>
+      <div class="level">{{ level }}</div>
+    </div>
+
+    {% if graph %}
+      <img src="{{ url_for('static', filename='mood_graph.png') }}" alt="감정 변화 그래프">
+    {% endif %}
+
+    <div class="advice">{{ advice }}</div>
+
+    <div class="btn-area">
+      <a href="/">🗨️ 대화로 돌아가기</a>
+      <a href="/logout" style="background:#ff7272;">🚪 로그아웃</a>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>끼리 챗봇 💬</title>
+  <style>
+    body {
+      background-color: #e5f6ff;
+      font-family: "Noto Sans KR", sans-serif;
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    #chatbox {
+      width: 420px;
+      height: 620px;
+      background: #ffffff;
+      border-radius: 20px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #header {
+      background-color: #89c9f5;
+      color: white;
+      text-align: center;
+      padding: 15px;
+      font-size: 18px;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    #header span {
+      flex: 1;
+      text-align: center;
+    }
+    #logout {
+      color: white;
+      font-size: 14px;
+      text-decoration: none;
+      margin-right: 10px;
+    }
+    #messages {
+      flex: 1;
+      padding: 15px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background-color: #f0faff;
+    }
+    .msg {
+      max-width: 80%;
+      padding: 10px 14px;
+      border-radius: 15px;
+      word-wrap: break-word;
+      line-height: 1.4;
+    }
+    .user {
+      align-self: flex-end;
+      background-color: #89c9f5;
+      color: white;
+      border-bottom-right-radius: 0;
+    }
+    .bot {
+      align-self: flex-start;
+      background-color: #f2f2f2;
+      border-bottom-left-radius: 0;
+      color: #333;
+    }
+    #input-area {
+      display: flex;
+      padding: 10px;
+      background: white;
+      border-top: 1px solid #ddd;
+    }
+    input {
+      flex: 1;
+      padding: 10px;
+      border-radius: 20px;
+      border: 1px solid #ccc;
+      outline: none;
+      font-size: 14px;
+    }
+    button {
+      background-color: #89c9f5;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 20px;
+      margin-left: 8px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    button:hover {
+      background-color: #63b3eb;
+    }
+    #analyze-btn {
+      background-color: #52b36b;
+      color: white;
+      width: 100%;
+      border: none;
+      padding: 12px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: 0.2s;
+      border-bottom-left-radius: 20px;
+      border-bottom-right-radius: 20px;
+    }
+    #analyze-btn:hover {
+      background-color: #3b9150;
+    }
+  </style>
+</head>
+<body>
+  <div id="chatbox">
+    <div id="header">
+      <span>☁️ 끼리 챗봇</span>
+      <a id="logout" href="/logout">로그아웃</a>
+    </div>
+
+    <div id="messages"></div>
+
+    <div id="input-area">
+      <input type="text" id="userInput" placeholder="메시지를 입력하세요..." autofocus>
+      <button onclick="send()">전송</button>
+    </div>
+
+    <!-- 추가된 감정분석 버튼 -->
+    <button id="analyze-btn" onclick="location.href='/analyze'">🧠 7일 감정 분석 보기</button>
+  </div>
+
+  <script>
+    async function send() {
+      const msg = document.getElementById("userInput").value.trim();
+      if (!msg) return;
+      const messages = document.getElementById("messages");
+      messages.innerHTML += `<div class="msg user">${msg}</div>`;
+      document.getElementById("userInput").value = "";
+
+      try {
+        const res = await fetch("/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ message: msg }),
+          credentials: "inc
+
