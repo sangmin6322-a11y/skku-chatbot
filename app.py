@@ -7,37 +7,48 @@ import random, os
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-
 from flask_cors import CORS
 
-# --- 기본 Flask 설정 ---
+
+# =========================
+# ✅ Flask 기본 설정
+# =========================
 app = Flask(__name__)
-CORS(app, supports_credentials=True)  # app 정의 후 CORS 적용
+CORS(app, supports_credentials=True)
+
 app.config.update(
     SESSION_COOKIE_SAMESITE="None",
-    SESSION_COOKIE_SECURE=True
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True
 )
 app.secret_key = "secret-key"
 
-# --- PostgreSQL 연결 ---
+# =========================
+# ✅ PostgreSQL 연결
+# =========================
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL", "sqlite:///users.db")
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"pool_pre_ping": True}
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 db = SQLAlchemy(app)
 
-# --- Flask-Login 설정 ---
+# =========================
+# ✅ Flask-Login 설정
+# =========================
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
-# --- 유저 모델 ---
+
+# =========================
+# ✅ 모델 정의
+# =========================
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
     password = db.Column(db.String(150), nullable=False)
 
-# --- 대화 로그 모델 ---
+
 class ChatLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
@@ -45,36 +56,48 @@ class ChatLog(db.Model):
     message = db.Column(db.Text)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
+
 with app.app_context():
     db.create_all()
+
 
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# --- 회원가입 ---
+
+# =========================
+# ✅ 회원가입
+# =========================
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
         username = request.form["username"]
         password = request.form["password"]
         hashed_pw = generate_password_hash(password)
+
         if User.query.filter_by(username=username).first():
             flash("이미 존재하는 아이디입니다.")
             return redirect(url_for("register"))
+
         new_user = User(username=username, password=hashed_pw)
         db.session.add(new_user)
         db.session.commit()
         flash("회원가입 성공! 로그인 해주세요.")
         return redirect(url_for("login"))
+
     return render_template("register.html")
 
-# --- 로그인 ---
+
+# =========================
+# ✅ 로그인 / 로그아웃
+# =========================
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         username = request.form["username"]
         password = request.form["password"]
+
         user = User.query.filter_by(username=username).first()
         if user and check_password_hash(user.password, password):
             login_user(user)
@@ -83,7 +106,7 @@ def login():
             flash("로그인 실패. 아이디나 비밀번호를 확인하세요.")
     return render_template("login.html")
 
-# --- 로그아웃 ---
+
 @app.route("/logout")
 @login_required
 def logout():
@@ -91,13 +114,19 @@ def logout():
     flash("로그아웃되었습니다.")
     return redirect(url_for("login"))
 
-# --- 채팅 페이지 ---
+
+# =========================
+# ✅ 기본 페이지
+# =========================
 @app.route("/")
 @login_required
 def chat_page():
     return render_template("index.html", username=current_user.username)
 
-# --- 챗봇 로직 ---
+
+# =========================
+# ✅ 챗봇 로직
+# =========================
 def classify_and_respond(user_input):
     mood_words = ["힘들", "우울", "무기력", "귀찮", "짜증", "죽고 싶", "의욕없", "불안"]
     if any(w in user_input for w in mood_words):
@@ -113,7 +142,10 @@ def classify_and_respond(user_input):
         "좋아, 계속 얘기해줘!"
     ])
 
-# --- 대화 처리 ---
+
+# =========================
+# ✅ 대화 처리
+# =========================
 @app.route("/chat", methods=["POST"])
 @login_required
 def chat():
@@ -128,7 +160,9 @@ def chat():
     return jsonify({"response": bot_reply})
 
 
-# --- 7일치 감정 분석 + 그래프 ---
+# =========================
+# ✅ 감정 분석 + 그래프
+# =========================
 @app.route("/analyze")
 @login_required
 def analyze():
@@ -172,7 +206,6 @@ def analyze():
         plt.ylabel("감정 점수")
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
-
         os.makedirs("static", exist_ok=True)
         graph_path = os.path.join("static", "mood_graph.png")
         plt.savefig(graph_path)
@@ -187,8 +220,13 @@ def analyze():
                            advice=advice,
                            graph=graph_path)
 
+
+# =========================
+# ✅ 실행
+# =========================
 if __name__ == "__main__":
     app.run(debug=True)
+
 
 # === 챗봇 데이터 (코랩에서 쓰던 거) ===
 import random
