@@ -127,26 +127,30 @@
 
     <div id="input-area">
       <input type="text" id="userInput" placeholder="메시지를 입력하세요..." autofocus>
-      <button onclick="send()">전송</button>
+      <button id="sendBtn">전송</button>
     </div>
 
     <button id="analyze-btn" onclick="location.href='/analyze'">🧠 7일 감정 분석 보기</button>
   </div>
 
   <script>
-  async function send() {
-    const msg = document.getElementById("userInput").value.trim();
+  const input = document.getElementById("userInput");
+  const messages = document.getElementById("messages");
+  const sendBtn = document.getElementById("sendBtn");
+
+  async function sendMessage() {
+    const msg = input.value.trim();
     if (!msg) return;
-    const messages = document.getElementById("messages");
+
     messages.innerHTML += `<div class="msg user">${msg}</div>`;
-    document.getElementById("userInput").value = "";
+    input.value = "";
 
     try {
       const res = await fetch("/chat", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ message: msg }),
-        credentials: "include"   // ✅ 세션 쿠키 유지 필수
+        credentials: "include" // ✅ 세션 쿠키 유지
       });
 
       if (!res.ok) throw new Error("서버 응답 오류");
@@ -160,10 +164,11 @@
     messages.scrollTop = messages.scrollHeight;
   }
 
-  document.getElementById("userInput").addEventListener("keypress", function(e) {
-    if (e.key === "Enter") send();
+  sendBtn.addEventListener("click", sendMessage);
+  input.addEventListener("keypress", e => {
+    if (e.key === "Enter") sendMessage();
   });
-</script>
+  </script>
 </body>
 </html>
 
