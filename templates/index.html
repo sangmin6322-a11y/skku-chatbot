@@ -130,7 +130,6 @@
       <button onclick="send()">전송</button>
     </div>
 
-    <!-- 추가된 감정분석 버튼 -->
     <button id="analyze-btn" onclick="location.href='/analyze'">🧠 7일 감정 분석 보기</button>
   </div>
 
@@ -146,6 +145,22 @@
         const res = await fetch("/chat", {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({ message: msg }),
-          credentials: "inc
+          credentials: "include",  // ✅ 세션 쿠키 포함 필수
+          body: new URLSearchParams({ message: msg })
+        });
+        const data = await res.json();
+        messages.innerHTML += `<div class="msg bot">${data.response}</div>`;
+        messages.scrollTop = messages.scrollHeight;
+      } catch (err) {
+        console.error("Error:", err);
+        messages.innerHTML += `<div class="msg bot">⚠️ 서버 연결 오류가 발생했습니다.</div>`;
+      }
+    }
+
+    document.getElementById("userInput").addEventListener("keypress", function(e) {
+      if (e.key === "Enter") send();
+    });
+  </script>
+</body>
+</html>
 
