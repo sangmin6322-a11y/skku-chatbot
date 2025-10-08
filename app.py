@@ -16,16 +16,15 @@ from chat_logic import classify_and_respond
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "secret-key")
 
-# ✅ 세션 설정 (브라우저 종료 시 만료)
+# ✅ 세션 및 쿠키 설정
 app.config.update(
-    SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=False,
+    SESSION_COOKIE_SAMESITE="None",
+    SESSION_COOKIE_SECURE=True,
     SESSION_COOKIE_HTTPONLY=True,
-    REMEMBER_COOKIE_SECURE=False,
-    REMEMBER_COOKIE_SAMESITE="Lax"
+    REMEMBER_COOKIE_DURATION=timedelta(days=7),
+    REMEMBER_COOKIE_SAMESITE="None",
+    REMEMBER_COOKIE_SECURE=True
 )
-# 세션 지속시간을 1시간으로 제한 (브라우저 닫으면 만료)
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1)
 
 # ✅ CORS 설정 (Render 도메인)
 CORS(
@@ -41,6 +40,7 @@ CORS(
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL", "sqlite:///users.db")
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"pool_pre_ping": True}
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 db = SQLAlchemy(app)
 
 # --- Flask-Login 설정 ---
@@ -93,7 +93,7 @@ def login():
         password = request.form["password"]
         user = User.query.filter_by(username=username).first()
         if user and check_password_hash(user.password, password):
-            login_user(user)  # ✅ remember 제거
+            login_user(user, remember=True)
             return redirect(url_for("chat_page"))
         else:
             flash("로그인 실패. 아이디나 비밀번호를 확인하세요.")
@@ -107,11 +107,13 @@ def logout():
     flash("로그아웃되었습니다.")
     return redirect(url_for("login"))
 
-# --- 채팅 페이지 ---
+# --- 채팅 페이지 (이전 대화 복원 추가) ---
 @app.route("/")
 @login_required
 def chat_page():
-    return render_template("index.html", username=current_user.username)
+    logs = ChatLog.query.filter_by(user_id=current_user.id).order_by(ChatLog.timestamp).all()
+    chat_history = [{"role": log.role, "message": log.message} for log in logs]
+    return render_template("index.html", username=current_user.username, history=chat_history)
 
 # --- 대화 처리 ---
 @app.route("/chat", methods=["POST"])
@@ -119,15 +121,10 @@ def chat_page():
 def chat():
     user_id = current_user.id
     message = request.form["message"]
-
-    # ✅ 코랩 기반 로직 호출
     bot_reply = classify_and_respond(message, user_id)
-
-    # DB 기록
     db.session.add(ChatLog(user_id=user_id, role="user", message=message))
     db.session.add(ChatLog(user_id=user_id, role="bot", message=bot_reply))
     db.session.commit()
-
     return jsonify({"response": bot_reply})
 
 # --- 감정 분석 ---
@@ -159,7 +156,6 @@ def analyze():
     else:
         level, advice = "고위험 😢", "최근 대화에서 심한 무기력감이 보여요. 전문 상담사에게 도움을 받아보는 게 좋겠어요."
 
-    # 그래프 생성
     if daily_score:
         dates = sorted(daily_score.keys())
         scores = [daily_score[d] for d in dates]
@@ -186,4 +182,3 @@ def analyze():
 
 if __name__ == "__main__":
     app.run(debug=True)
-

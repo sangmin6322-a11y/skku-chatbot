@@ -127,47 +127,49 @@
 
     <div id="input-area">
       <input type="text" id="userInput" placeholder="메시지를 입력하세요..." autofocus>
-      <button id="sendBtn">전송</button>
+      <button onclick="send()">전송</button>
     </div>
 
     <button id="analyze-btn" onclick="location.href='/analyze'">🧠 7일 감정 분석 보기</button>
   </div>
 
   <script>
-  const input = document.getElementById("userInput");
-  const messages = document.getElementById("messages");
-  const sendBtn = document.getElementById("sendBtn");
+    // ✅ 서버에서 전달된 기존 대화 복원
+    const chatHistory = {{ history|tojson }};
+    const messages = document.getElementById("messages");
+    chatHistory.forEach(chat => {
+      const roleClass = chat.role === "user" ? "user" : "bot";
+      messages.innerHTML += `<div class="msg ${roleClass}">${chat.message}</div>`;
+    });
+    messages.scrollTop = messages.scrollHeight;
 
-  async function sendMessage() {
-    const msg = input.value.trim();
-    if (!msg) return;
+    async function send() {
+      const msg = document.getElementById("userInput").value.trim();
+      if (!msg) return;
+      messages.innerHTML += `<div class="msg user">${msg}</div>`;
+      document.getElementById("userInput").value = "";
 
-    messages.innerHTML += `<div class="msg user">${msg}</div>`;
-    input.value = "";
+      try {
+        const res = await fetch("/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ message: msg }),
+          credentials: "include"
+        });
 
-    try {
-      const res = await fetch("/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ message: msg }),
-        credentials: "include" // ✅ 세션 쿠키 유지
-      });
+        if (!res.ok) throw new Error("서버 응답 오류");
+        const data = await res.json();
+        messages.innerHTML += `<div class="msg bot">${data.response}</div>`;
+      } catch {
+        messages.innerHTML += `<div class="msg bot" style="color:red;">⚠️ 서버 연결 오류가 발생했습니다.</div>`;
+      }
 
-      if (!res.ok) throw new Error("서버 응답 오류");
-
-      const data = await res.json();
-      messages.innerHTML += `<div class="msg bot">${data.response}</div>`;
-    } catch (err) {
-      messages.innerHTML += `<div class="msg bot" style="color:red;">⚠️ 서버 연결 오류가 발생했습니다.</div>`;
+      messages.scrollTop = messages.scrollHeight;
     }
 
-    messages.scrollTop = messages.scrollHeight;
-  }
-
-  sendBtn.addEventListener("click", sendMessage);
-  input.addEventListener("keypress", e => {
-    if (e.key === "Enter") sendMessage();
-  });
+    document.getElementById("userInput").addEventListener("keypress", e => {
+      if (e.key === "Enter") send();
+    });
   </script>
 </body>
 </html>
