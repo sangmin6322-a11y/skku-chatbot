@@ -10,13 +10,13 @@ import matplotlib.pyplot as plt
 
 from flask_cors import CORS
 
-CORS(app, supports_credentials=True)
+# --- 기본 Flask 설정 ---
+app = Flask(__name__)
+CORS(app, supports_credentials=True)  # app 정의 후 CORS 적용
 app.config.update(
     SESSION_COOKIE_SAMESITE="None",
     SESSION_COOKIE_SECURE=True
 )
-# --- 기본 Flask 설정 ---
-app = Flask(__name__)
 app.secret_key = "secret-key"
 
 # --- PostgreSQL 연결 ---
@@ -126,6 +126,7 @@ def chat():
     db.session.commit()
 
     return jsonify({"response": bot_reply})
+
 
 # --- 7일치 감정 분석 + 그래프 ---
 @app.route("/analyze")
