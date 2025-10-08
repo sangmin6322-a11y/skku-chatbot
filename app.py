@@ -9,7 +9,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from flask_cors import CORS
 
-# ✅ 챗봇 로직 가져오기 (코랩 기반)
+# ✅ 챗봇 로직 가져오기
 from chat_logic import classify_and_respond
 
 # --- Flask 기본 설정 ---
@@ -28,7 +28,7 @@ app.config.update(
 # ✅ CORS 설정 (Render 도메인)
 CORS(
     app,
-    resources={r"/*": {"origins": ["https://chatbot-rzw5.onrender.com"]}},
+    resources={r"/*": {"origins": ["https://chatbot-rzw5.onrender.com", "https://skku-chatbot.onrender.com"]}},
     supports_credentials=True
 )
 
@@ -116,7 +116,7 @@ def chat():
     user_id = current_user.id
     message = request.form["message"]
 
-    # ✅ 코랩 기반 로직으로 응답 생성
+    # ✅ 코랩 기반 로직 호출
     bot_reply = classify_and_respond(message, user_id)
 
     # DB 기록
@@ -155,6 +155,7 @@ def analyze():
     else:
         level, advice = "고위험 😢", "최근 대화에서 심한 무기력감이 보여요. 전문 상담사에게 도움을 받아보는 게 좋겠어요."
 
+    # 그래프 생성
     if daily_score:
         dates = sorted(daily_score.keys())
         scores = [daily_score[d] for d in dates]
@@ -173,3 +174,12 @@ def analyze():
         graph_path = None
 
     return render_template("result.html",
+                           username=current_user.username,
+                           score=total_score,
+                           level=level,
+                           advice=advice,
+                           graph=graph_path)
+
+if __name__ == "__main__":
+    app.run(debug=True)
+
