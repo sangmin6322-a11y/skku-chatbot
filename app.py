@@ -8,6 +8,13 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
+from flask_cors import CORS
+
+CORS(app, supports_credentials=True)
+app.config.update(
+    SESSION_COOKIE_SAMESITE="None",
+    SESSION_COOKIE_SECURE=True
+)
 # --- 기본 Flask 설정 ---
 app = Flask(__name__)
 app.secret_key = "secret-key"
