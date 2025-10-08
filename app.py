@@ -16,19 +16,24 @@ from chat_logic import classify_and_respond
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "secret-key")
 
-# ✅ Render HTTPS 세션 설정
+# ✅ 세션 설정 (브라우저 종료 시 만료)
 app.config.update(
-    SESSION_COOKIE_SAMESITE="None",
-    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=False,
     SESSION_COOKIE_HTTPONLY=True,
-    REMEMBER_COOKIE_SECURE=True,
-    REMEMBER_COOKIE_SAMESITE="None"
+    REMEMBER_COOKIE_SECURE=False,
+    REMEMBER_COOKIE_SAMESITE="Lax"
 )
+# 세션 지속시간을 1시간으로 제한 (브라우저 닫으면 만료)
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1)
 
 # ✅ CORS 설정 (Render 도메인)
 CORS(
     app,
-    resources={r"/*": {"origins": ["https://chatbot-rzw5.onrender.com", "https://skku-chatbot.onrender.com"]}},
+    resources={r"/*": {"origins": [
+        "https://chatbot-rzw5.onrender.com",
+        "https://skku-chatbot.onrender.com"
+    ]}},
     supports_credentials=True
 )
 
@@ -36,7 +41,6 @@ CORS(
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL", "sqlite:///users.db")
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"pool_pre_ping": True}
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 db = SQLAlchemy(app)
 
 # --- Flask-Login 설정 ---
@@ -89,7 +93,7 @@ def login():
         password = request.form["password"]
         user = User.query.filter_by(username=username).first()
         if user and check_password_hash(user.password, password):
-            login_user(user)
+            login_user(user)  # ✅ remember 제거
             return redirect(url_for("chat_page"))
         else:
             flash("로그인 실패. 아이디나 비밀번호를 확인하세요.")
