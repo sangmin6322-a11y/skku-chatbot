@@ -13,15 +13,20 @@ from flask_cors import CORS
 # =========================
 # ✅ Flask 기본 설정
 # =========================
+# --- Flask 기본 설정 ---
 app = Flask(__name__)
-CORS(app, supports_credentials=True)
+
+# ✅ 반드시 app 생성 후에 CORS 적용
+CORS(app, resources={r"/*": {"origins": ["https://chatbot-rzw5.onrender.com"]}}, supports_credentials=True)
 
 app.config.update(
     SESSION_COOKIE_SAMESITE="None",
     SESSION_COOKIE_SECURE=True,
-    SESSION_COOKIE_HTTPONLY=True
+    SESSION_COOKIE_HTTPONLY=True,
+    REMEMBER_COOKIE_SECURE=True,
+    REMEMBER_COOKIE_SAMESITE="None"
 )
-app.secret_key = "secret-key"
+app.secret_key = os.getenv("SECRET_KEY", "secret-key")
 
 # =========================
 # ✅ PostgreSQL 연결
