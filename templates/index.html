@@ -134,33 +134,36 @@
   </div>
 
   <script>
-    async function send() {
-      const msg = document.getElementById("userInput").value.trim();
-      if (!msg) return;
-      const messages = document.getElementById("messages");
-      messages.innerHTML += `<div class="msg user">${msg}</div>`;
-      document.getElementById("userInput").value = "";
+  async function send() {
+    const msg = document.getElementById("userInput").value.trim();
+    if (!msg) return;
+    const messages = document.getElementById("messages");
+    messages.innerHTML += `<div class="msg user">${msg}</div>`;
+    document.getElementById("userInput").value = "";
 
-      try {
-        const res = await fetch("/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          credentials: "include",  // ✅ 세션 쿠키 포함 필수
-          body: new URLSearchParams({ message: msg })
-        });
-        const data = await res.json();
-        messages.innerHTML += `<div class="msg bot">${data.response}</div>`;
-        messages.scrollTop = messages.scrollHeight;
-      } catch (err) {
-        console.error("Error:", err);
-        messages.innerHTML += `<div class="msg bot">⚠️ 서버 연결 오류가 발생했습니다.</div>`;
-      }
+    try {
+      const res = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ message: msg }),
+        credentials: "include"   // ✅ 세션 쿠키 유지 필수
+      });
+
+      if (!res.ok) throw new Error("서버 응답 오류");
+
+      const data = await res.json();
+      messages.innerHTML += `<div class="msg bot">${data.response}</div>`;
+    } catch (err) {
+      messages.innerHTML += `<div class="msg bot" style="color:red;">⚠️ 서버 연결 오류가 발생했습니다.</div>`;
     }
 
-    document.getElementById("userInput").addEventListener("keypress", function(e) {
-      if (e.key === "Enter") send();
-    });
-  </script>
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  document.getElementById("userInput").addEventListener("keypress", function(e) {
+    if (e.key === "Enter") send();
+  });
+</script>
 </body>
 </html>
 
