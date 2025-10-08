@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: kirri-chatbot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: SECRET_KEY
+        value: "kirri-secret-key"
