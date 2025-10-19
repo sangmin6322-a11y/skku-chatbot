@@ -72,13 +72,41 @@
       border-bottom-left-radius: 0;
       color: #333;
     }
+    .msg.image-message {
+      padding: 5px;
+      background: transparent;
+      border: none;
+    }
+    .msg.image-message img {
+      width: 100%;
+      max-width: 300px; 
+      border-radius: 10px;
+      display: block;
+    }
+    
     #input-area {
       display: flex;
       padding: 10px;
       background: white;
       border-top: 1px solid #ddd;
     }
-    input {
+
+    #attach-btn {
+      background-color: #f0f0f0;
+      color: #555;
+      border: 1px solid #ccc;
+      padding: 0 12px;
+      margin-right: 8px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: 0.2s;
+    }
+    #attach-btn:hover {
+      background-color: #e0e0e0;
+    }
+    
+    input[type="text"] {
       flex: 1;
       padding: 10px;
       border-radius: 20px;
@@ -86,6 +114,11 @@
       outline: none;
       font-size: 14px;
     }
+    input[type="text"]:disabled {
+      background: #f5f5f5;
+      color: #777;
+    }
+    
     button {
       background-color: #89c9f5;
       color: white;
@@ -126,6 +159,10 @@
     <div id="messages"></div>
 
     <div id="input-area">
+      <input type="file" id="imageInput" accept="image/png, image/jpeg, image/gif" style="display: none;">
+      
+      <button id="attach-btn" onclick="document.getElementById('imageInput').click()">📎</button>
+      
       <input type="text" id="userInput" placeholder="메시지를 입력하세요..." autofocus>
       <button onclick="send()">전송</button>
     </div>
@@ -134,43 +171,90 @@
   </div>
 
   <script>
-    // ✅ 서버에서 전달된 기존 대화 복원
+    function formatMessageContent(message, role) {
+      const roleClass = role === "user" ? "user" : "bot";
+      const isImage = /\.(gif|png|jpe?g)$/i.test(message);
+
+      if (isImage) {
+        return `<div class="msg ${roleClass} image-message">
+                  <img src="${message}" alt="전송된 이미지">
+                </div>`;
+      } else {
+        return `<div class="msg ${roleClass}">${message}</div>`;
+      }
+    }
     const chatHistory = {{ history|tojson }};
     const messages = document.getElementById("messages");
     chatHistory.forEach(chat => {
-      const roleClass = chat.role === "user" ? "user" : "bot";
-      messages.innerHTML += `<div class="msg ${roleClass}">${chat.message}</div>`;
+      messages.innerHTML += formatMessageContent(chat.message, chat.role);
     });
     messages.scrollTop = messages.scrollHeight;
-
+    document.getElementById("imageInput").addEventListener("change", function() {
+        const userInput = document.getElementById("userInput");
+        if (this.files && this.files.length > 0) {
+            userInput.value = `🖼️ ${this.files[0].name}`; // 예: 🖼️ kkiri.png
+            userInput.disabled = true; // 파일 선택 시 텍스트 입력은 막음
+        }
+    });
+    document.getElementById("userInput").addEventListener("click", function() {
+        if (this.disabled) {
+            this.disabled = false;
+            this.value = "";
+            document.getElementById("imageInput").value = ""; // 파일 선택 초기화
+        }
+    });
     async function send() {
-      const msg = document.getElementById("userInput").value.trim();
-      if (!msg) return;
-      messages.innerHTML += `<div class="msg user">${msg}</div>`;
-      document.getElementById("userInput").value = "";
+      const msgInput = document.getElementById("userInput");
+      const fileInput = document.getElementById("imageInput");
 
+      const msg = msgInput.value.trim();
+      const file = fileInput.files[0];
+
+      if (!msg && !file) return;
+      const formData = new FormData();
+
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            messages.innerHTML += `<div class="msg user image-message">
+                                     <img src="${e.target.result}" alt="업로드한 이미지">
+                                   </div>`;
+            messages.scrollTop = messages.scrollHeight;
+        }
+        reader.readAsDataURL(file);
+        
+        formData.append("image", file);
+
+      } else if (msg) {
+        messages.innerHTML += formatMessageContent(msg, 'user');
+        formData.append("message", msg);
+      }
+      msgInput.value = "";
+      fileInput.value = "";
+      msgInput.disabled = false;
       try {
         const res = await fetch("/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({ message: msg }),
-          credentials: "include"
+            method: "POST",
+            body: formData,
+            credentials: "include"
         });
 
         if (!res.ok) throw new Error("서버 응답 오류");
         const data = await res.json();
-        messages.innerHTML += `<div class="msg bot">${data.response}</div>`;
-      } catch {
+        messages.innerHTML += formatMessageContent(data.response, 'bot');
+
+      } catch(e) {
+        console.error(e);
         messages.innerHTML += `<div class="msg bot" style="color:red;">⚠️ 서버 연결 오류가 발생했습니다.</div>`;
       }
 
       messages.scrollTop = messages.scrollHeight;
     }
-
     document.getElementById("userInput").addEventListener("keypress", e => {
-      if (e.key === "Enter") send();
+      if (e.key === "Enter" && !document.getElementById("userInput").disabled) {
+          send();
+      }
     });
   </script>
 </body>
 </html>
-

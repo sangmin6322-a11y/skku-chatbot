@@ -8,7 +8,34 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from flask_cors import CORS
+import os
+from werkzeug.utils import secure_filename
 
+@app.route("/chat", methods=["POST"])
+def chat():
+    text_message = request.form.get('message')
+    image_file = request.files.get('image')
+
+    bot_response = ""
+
+    if image_file:
+        filename = secure_filename(image_file.filename)
+        save_path = os.path.join('static', 'uploads', filename)
+        image_file.save(save_path)
+        
+        bot_response = f"'{filename}' 이미지가 업로드되었네요! (분석 결과...)"
+
+    elif text_message:
+
+        if "끼리" in text_message:
+            bot_response = "/static/images/kkiri-hello.gif" 
+        else:
+            bot_response = f"'{text_message}'라고 하셨네요."
+
+    else:
+        bot_response = "오류: 아무것도 전송되지 않았습니다."
+
+    return jsonify({'response': bot_response})
 # ✅ 챗봇 로직 가져오기
 from chat_logic import classify_and_respond
 
