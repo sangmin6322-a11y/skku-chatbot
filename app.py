@@ -194,15 +194,17 @@ def summarize_mood_for_user(user_id: int):
 @app.route("/")
 @login_required
 def index():
-    # 사용자별 최근 채팅 기록 불러오기
-    from models import ChatLog  # 만약 app.py에 이미 있다면 생략
+    # 사용자별 최근 대화 기록 불러오기
     user_logs = ChatLog.query.filter_by(user_id=current_user.id).order_by(ChatLog.timestamp.asc()).all()
 
-    # JSON 변환용 리스트
-    history = [{"role": log.role, "message": log.message} for log in user_logs]
+    # DB에 아무 대화 기록이 없을 때 대비 (빈 리스트)
+    history = [{"role": log.role, "message": log.message} for log in user_logs] if user_logs else []
 
-    return render_template("index.html", username=current_user.username, history=history)
-
+    return render_template(
+        "index.html",
+        username=current_user.username,
+        history=history
+    )
 
 
 @app.route("/login", methods=["GET", "POST"])
