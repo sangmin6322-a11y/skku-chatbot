@@ -1,5 +1,7 @@
 import random
 from flask import current_app
+from openai import OpenAI
+import os, random
 
 # === 감정 + 일상 대화 통합 카테고리 ===
 daily_categories = {
@@ -113,24 +115,42 @@ emotion_responses = {
 
 default_responses = ["음… 잘 모르겠어.", "그렇구나~ 좀 더 얘기해줄래?", "흥미롭네.", "재밌는 얘기야!"]
 
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # === 핵심 함수 ===
 def classify_and_respond(user_input, user_id=None):
     """
     사용자 입력을 기반으로 카테고리를 분류하고,
-    DB에 직접 접근하지 않고 챗봇 응답 텍스트만 반환한다.
+    규칙형 응답이 없을 경우 AI(GPT)에게 넘긴다.
     """
     text = user_input.strip()
 
-    # 감정 관련 응답
+    # 🧩 1️⃣ 감정 관련 응답 (기존 로직 그대로)
     for category, keywords in emotion_categories.items():
         if any(kw in text for kw in keywords):
             return random.choice(emotion_responses.get(category, default_responses))
 
-    # 일상 관련 응답
+    # 🧩 2️⃣ 일상 관련 응답 (기존 로직 그대로)
     for category, keywords in daily_categories.items():
         if any(kw in text for kw in keywords):
             return random.choice(daily_responses.get(category, default_responses))
 
-    # 기본 응답
-    return random.choice(default_responses)
+    # 🧠 3️⃣ 위의 두 경우에 해당하지 않으면 → GPT 호출
+    try:
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",  # 빠르고 저렴한 모델
+            messages=[
+                {"role": "system", "content": (
+                    "너는 '끼리'라는 이름의 다정하고 공감 잘하는 AI야. "
+                    "대화는 자연스럽고 따뜻하게 이어가. "
+                    "사용자의 감정을 이해하고, 간결하지만 따뜻한 말투로 답해줘."
+                )},
+                {"role": "user", "content": text}
+            ]
+        )
+        ai_reply = completion.choices[0].message.content.strip()
+        return ai_reply
+
+    except Exception as e:
+        # GPT 호출 실패 시 기본 랜덤 응답
+        return f"⚠️ AI 응답 오류: {str(e)}"

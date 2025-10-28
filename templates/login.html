@@ -21,6 +21,11 @@
       padding: 40px;
       width: 320px;
       text-align: center;
+      animation: fadeIn 0.6s ease-in-out;
+    }
+    @keyframes fadeIn {
+      from {opacity: 0; transform: translateY(10px);}
+      to {opacity: 1; transform: translateY(0);}
     }
     h2 {
       color: #2a6fb4;
@@ -43,25 +48,16 @@
       cursor: pointer;
       transition: 0.2s;
     }
-    button:hover {
-      background-color: #4698ef;
-    }
-    a {
-      color: #2a6fb4;
-      text-decoration: none;
-    }
-    .flash {
-      color: red;
-      font-size: 14px;
-      margin-bottom: 10px;
-    }
+    button:hover { background-color: #4698ef; }
+    a { color: #2a6fb4; text-decoration: none; }
+    .flash { color: red; font-size: 14px; margin-bottom: 10px; }
+    img { width: 100px; border-radius: 50%; margin-bottom: 10px; }
   </style>
 </head>
 <body>
   <div class="chat-box">
+    <img src="{{ url_for('static', filename='mascot.png') }}" alt="끼리" />
     <h2>끼리 챗봇 로그인 💬</h2>
-
-    <!-- Flash 메시지 표시 -->
     {% with messages = get_flashed_messages() %}
       {% if messages %}
         {% for msg in messages %}
@@ -69,14 +65,11 @@
         {% endfor %}
       {% endif %}
     {% endwith %}
-
-    <!-- 로그인 폼 -->
     <form method="POST" action="{{ url_for('login') }}">
       <input type="text" name="username" placeholder="아이디" required /><br>
       <input type="password" name="password" placeholder="비밀번호" required /><br>
       <button type="submit">로그인</button>
     </form>
-
     <p>계정이 없나요? <a href="/register">회원가입</a></p>
   </div>
 </body>
