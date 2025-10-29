@@ -125,6 +125,13 @@ def chat():
     db.session.commit()
     return jsonify({"response": bot_reply})
 
+@app.route("/reset", methods=["POST"])
+@login_required
+def reset_chat():
+    ChatLog.query.filter_by(user_id=current_user.id).delete()
+    db.session.commit()
+    return jsonify({"message": "Chat history cleared."})
+
 # ✅ 감정 분석
 @app.route("/analyze")
 @login_required

@@ -24,6 +24,7 @@
       flex-direction: column;
       overflow: hidden;
       animation: fadeIn 0.6s ease-in-out;
+      position: relative;
     }
 
     @keyframes fadeIn {
@@ -51,6 +52,20 @@
       box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     }
 
+    #header button {
+      background: none;
+      border: none;
+      color: white;
+      cursor: pointer;
+      font-size: 13px;
+      margin-left: 6px;
+      transition: 0.2s;
+    }
+
+    #header button:hover {
+      text-decoration: underline;
+    }
+
     #messages {
       flex: 1;
       overflow-y: auto;
@@ -67,12 +82,10 @@
 
     .bot {
       flex-direction: row;
-      align-items: flex-start;
     }
 
     .user {
       flex-direction: row-reverse;
-      align-items: flex-start;
     }
 
     .profile {
@@ -145,19 +158,63 @@
       color: #58aafc;
     }
 
-    #report-btn {
-      background: none;
-      border: none;
-      color: white;
+    /* 꾸미기 창 */
+    #settings-panel {
       position: absolute;
-      right: 15px;
-      top: 12px;
-      cursor: pointer;
-      font-size: 14px;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      border-radius: 15px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+      width: 300px;
+      padding: 20px;
+      text-align: center;
+      display: none;
+      z-index: 10;
     }
 
-    #report-btn:hover {
-      text-decoration: underline;
+    #settings-panel h3 {
+      color: #2a6fb4;
+      margin-bottom: 10px;
+    }
+
+    .avatar-option {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      margin: 10px;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: 0.2s;
+    }
+
+    .avatar-option:hover {
+      border: 2px solid #58aafc;
+    }
+
+    .close-btn {
+      margin-top: 15px;
+      background: #58aafc;
+      border: none;
+      color: white;
+      border-radius: 8px;
+      padding: 8px 14px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    .close-btn:hover {
+      background: #3d91e0;
+    }
+
+    #overlay {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.3);
+      display: none;
+      z-index: 5;
     }
   </style>
 </head>
@@ -166,7 +223,11 @@
     <div id="header">
       <img src="{{ url_for('static', filename='mascot.png') }}" alt="끼리" />
       끼리 챗봇 💬
-      <button id="report-btn" onclick="window.location.href='/analyze'">리포트</button>
+      <div style="position:absolute; right:10px; top:12px;">
+        <button onclick="window.location.href='/analyze'">리포트</button>
+        <button onclick="resetChat()">새로고침</button>
+        <button onclick="openSettings()">꾸미기</button>
+      </div>
     </div>
 
     <div id="messages"></div>
@@ -177,16 +238,29 @@
       <input type="text" id="input" placeholder="메시지를 입력하세요..." />
       <button id="send-btn">➤</button>
     </div>
+
+    <div id="overlay"></div>
+    <div id="settings-panel">
+      <h3>아바타 선택 🎨</h3>
+      <div id="avatars">
+        <img src="{{ url_for('static', filename='avatars/ava1.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava1.png')">
+        <img src="{{ url_for('static', filename='avatars/ava2.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava2.png')">
+        <img src="{{ url_for('static', filename='avatars/ava3.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava3.png')">
+        <img src="{{ url_for('static', filename='avatars/ava4.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava4.png')">
+      </div>
+      <button class="close-btn" onclick="closeSettings()">닫기</button>
+    </div>
   </div>
 
   <script>
     const username = "{{ username }}";
     const chatHistory = {{ history|tojson|default("[]") }};
-
     const messagesDiv = document.getElementById("messages");
     const input = document.getElementById("input");
     const sendBtn = document.getElementById("send-btn");
     const imageInput = document.getElementById("image-input");
+
+    let userAvatar = localStorage.getItem("userAvatar") || "https://cdn-icons-png.flaticon.com/512/847/847969.png";
 
     function appendMessage(role, text, imageUrl = null) {
       const msgDiv = document.createElement("div");
@@ -194,12 +268,9 @@
 
       const profileImg = document.createElement("img");
       profileImg.classList.add("profile");
-
-      if (role === "bot") {
-        profileImg.src = "{{ url_for('static', filename='mascot.png') }}";
-      } else {
-        profileImg.src = "https://cdn-icons-png.flaticon.com/512/847/847969.png";
-      }
+      profileImg.src = (role === "bot")
+        ? "{{ url_for('static', filename='mascot.png') }}"
+        : userAvatar;
 
       const bubble = document.createElement("div");
       bubble.classList.add("bubble");
@@ -229,14 +300,11 @@
     }
 
     sendBtn.addEventListener("click", sendMessage);
-    input.addEventListener("keypress", (e) => {
-      if (e.key === "Enter") sendMessage();
-    });
+    input.addEventListener("keypress", (e) => { if (e.key === "Enter") sendMessage(); });
 
     function sendMessage() {
       const text = input.value.trim();
       if (text === "") return;
-
       appendMessage("user", text);
       input.value = "";
 
@@ -245,9 +313,7 @@
 
       fetch("/chat", { method: "POST", body: formData })
         .then(res => res.json())
-        .then(data => {
-          appendMessage("bot", data.response);
-        })
+        .then(data => appendMessage("bot", data.response))
         .catch(err => console.error(err));
     }
 
@@ -262,11 +328,40 @@
 
       fetch("/chat", { method: "POST", body: formData })
         .then(res => res.json())
-        .then(data => {
-          appendMessage("bot", data.response, data.image_url || null);
-        })
+        .then(data => appendMessage("bot", data.response, data.image_url || null))
         .catch(err => console.error(err));
     });
+
+    // ✅ 새로고침 (서버 DB 초기화)
+    function resetChat() {
+      if (confirm("정말 채팅을 새로 시작할까요?")) {
+        fetch("/reset", { method: "POST" })
+          .then(() => location.reload());
+      }
+    }
+
+    // ✅ 꾸미기 창
+    const settingsPanel = document.getElementById("settings-panel");
+    const overlay = document.getElementById("overlay");
+
+    function openSettings() {
+      settingsPanel.style.display = "block";
+      overlay.style.display = "block";
+    }
+
+    function closeSettings() {
+      settingsPanel.style.display = "none";
+      overlay.style.display = "none";
+    }
+
+    // ✅ 아바타 선택
+    function selectAvatar(path) {
+      localStorage.setItem("userAvatar", `/static/${path}`);
+      userAvatar = `/static/${path}`;
+      closeSettings();
+      alert("아바타가 변경되었습니다!");
+    }
   </script>
 </body>
 </html>
+
