@@ -224,6 +224,10 @@
     // 기존 대화 불러오기
     chatHistory.forEach(msg => appendMessage(msg.role, msg.message));
 
+    if (chatHistory.length === 0) {
+      appendMessage("bot", "안녕~ 난 끼리야 💬 어떤 얘기 하고 싶어서 찾아왔어?");
+    }
+
     sendBtn.addEventListener("click", sendMessage);
     input.addEventListener("keypress", (e) => {
       if (e.key === "Enter") sendMessage();
