@@ -179,5 +179,61 @@ def analyze():
                            advice=advice,
                            graph=graph_path)
 
+@app.route("/report")
+@login_required
+def report():
+    user_id = current_user.id
+    logs = ChatLog.query.filter(
+        ChatLog.user_id == user_id,
+        ChatLog.role == "user",
+        ChatLog.timestamp >= datetime.utcnow() - timedelta(days=7)
+    ).all()
+
+    mood_keywords = ["힘들", "우울", "무기력", "짜증", "귀찮", "죽고 싶", "의욕없", "불안"]
+    daily_score = {}
+    for log in logs:
+        date = log.timestamp.date()
+        score = sum(1 for kw in mood_keywords if kw in log.message)
+        daily_score[date] = daily_score.get(date, 0) + score
+
+    total_score = sum(daily_score.values())
+
+    # 감정 수준 판별
+    if total_score == 0:
+        level, advice = "정상 😊", "최근 대화에서 부정적인 감정은 거의 보이지 않아요. 잘 지내고 있네요!"
+    elif total_score <= 3:
+        level, advice = "경도 우울 😐", "가벼운 스트레스나 피로가 느껴져요. 충분히 쉬고 좋아하는 걸 해보세요."
+    elif total_score <= 6:
+        level, advice = "중등도 우울 😔", "감정적 피로가 누적된 것 같아요. 가까운 사람에게 털어놓는 것도 좋아요."
+    else:
+        level, advice = "고위험 😢", "최근 대화에서 심한 무기력감이 보여요. 전문 상담사에게 도움을 받아보는 게 좋겠어요."
+
+    # 그래프 생성
+    if daily_score:
+        dates = sorted(daily_score.keys())
+        scores = [daily_score[d] for d in dates]
+        plt.figure(figsize=(6, 3))
+        plt.plot(dates, scores, marker='o', color='#2a6fb4')
+        plt.title("최근 7일 감정 키워드 변화")
+        plt.xlabel("날짜")
+        plt.ylabel("감정 점수")
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        os.makedirs("static", exist_ok=True)
+        graph_path = os.path.join("static", "mood_graph.png")
+        plt.savefig(graph_path)
+        plt.close()
+    else:
+        graph_path = None
+
+    return render_template(
+        "report.html",
+        username=current_user.username,
+        score=total_score,
+        level=level,
+        advice=advice,
+        graph=graph_path
+    )
+
 if __name__ == "__main__":
     app.run(debug=True)
