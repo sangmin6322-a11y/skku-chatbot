@@ -151,7 +151,7 @@
 
     #upload-btn:hover { color: #58aafc; }
 
-    /* 🎨 꾸미기 창 스타일 */
+    /* 🎨 꾸미기 창 */
     #settings-panel {
       position: absolute;
       top: 50%; left: 50%;
@@ -165,8 +165,6 @@
       display: none;
       z-index: 10;
     }
-
-    #settings-panel h3 { color: #2a6fb4; margin-bottom: 10px; }
 
     #tab-buttons {
       display: flex;
@@ -189,13 +187,35 @@
     .tab-content { display: none; }
     .tab-content.active { display: block; }
 
-    .avatar-option {
-      width: 60px; height: 60px;
-      border-radius: 50%; margin: 10px;
-      cursor: pointer; border: 2px solid transparent;
-      transition: 0.2s;
+    /* 🧸 아바타/마스코트 이미지 그리드 */
+    #avatars, #mascots {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      justify-items: center;
+      align-items: center;
     }
-    .avatar-option:hover { border: 2px solid #58aafc; }
+
+    .avatar-option {
+      width: 70px;
+      height: 70px;
+      object-fit: contain;
+      border-radius: 12px;
+      border: 2px solid transparent;
+      cursor: pointer;
+      padding: 6px;
+      transition: 0.2s;
+      background-color: #f8fbff;
+    }
+    .avatar-option:hover {
+      border: 2px solid #58aafc;
+      background-color: #eaf6ff;
+    }
+
+    .avatar-option.selected {
+      border: 3px solid #58aafc;
+      background-color: #e3f3ff;
+    }
 
     .close-btn {
       margin-top: 15px;
@@ -253,24 +273,19 @@
       <div id="avatar-tab" class="tab-content active">
         <p>내 프로필 아바타 선택 👤</p>
         <div id="avatars">
-          <img src="{{ url_for('static', filename='avatars/ava1.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava1.png')">
-          <img src="{{ url_for('static', filename='avatars/ava2.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava2.png')">
-          <img src="{{ url_for('static', filename='avatars/ava3.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava3.png')">
-          <img src="{{ url_for('static', filename='avatars/ava4.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava4.png')">
+          <img src="{{ url_for('static', filename='avatars/ava1.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava1.png', event)">
+          <img src="{{ url_for('static', filename='avatars/ava2.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava2.png', event)">
+          <img src="{{ url_for('static', filename='avatars/ava3.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava3.png', event)">
+          <img src="{{ url_for('static', filename='avatars/ava4.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava4.png', event)">
         </div>
       </div>
 
       <div id="mascot-tab" class="tab-content">
         <p>끼리(봇) 마스코트 선택 🤖</p>
         <div id="mascots">
-          <img src="{{ url_for('static', filename='mascot00.png') }}" class="avatar-option" onclick="selectMascot('mascot00.png')">
-          <img src="{{ url_for('static', filename='mascot01.png') }}" class="avatar-option" onclick="selectMascot('mascot01.png')">
-          <img src="{{ url_for('static', filename='mascot02.png') }}" class="avatar-option" onclick="selectMascot('mascot02.png')">
-          <img src="{{ url_for('static', filename='mascot03.png') }}" class="avatar-option" onclick="selectMascot('mascot03.png')">
-	  <img src="{{ url_for('static', filename='mascot03.png') }}" class="avatar-option" onclick="selectMascot('mascot04.png')">
-	  <img src="{{ url_for('static', filename='mascot03.png') }}" class="avatar-option" onclick="selectMascot('mascot05.png')">
-          <img src="{{ url_for('static', filename='mascot03.png') }}" class="avatar-option" onclick="selectMascot('mascot06.png')">
-          <img src="{{ url_for('static', filename='mascot03.png') }}" class="avatar-option" onclick="selectMascot('mascot07.png')">
+          {% for i in range(8) %}
+            <img src="{{ url_for('static', filename='mascot0' ~ i ~ '.png') }}" class="avatar-option" onclick="selectMascot('mascot0{{ i }}.png', event)">
+          {% endfor %}
         </div>
       </div>
 
@@ -288,22 +303,17 @@
     let userAvatar = localStorage.getItem("userAvatar") || "https://cdn-icons-png.flaticon.com/512/847/847969.png";
     let mascotImg = localStorage.getItem("kirriMascot") || "{{ url_for('static', filename='mascot.png') }}";
 
-    // 🧩 메시지 추가
+    // 메시지 추가
     function appendMessage(role, text, imageUrl = null) {
       const msgDiv = document.createElement("div");
       msgDiv.classList.add("message", role);
-
       const profileImg = document.createElement("img");
       profileImg.classList.add("profile");
       profileImg.src = (role === "bot") ? mascotImg : userAvatar;
-
       const bubble = document.createElement("div");
       bubble.classList.add("bubble");
       bubble.textContent = text;
-
-      msgDiv.appendChild(profileImg);
-      msgDiv.appendChild(bubble);
-
+      msgDiv.append(profileImg, bubble);
       if (imageUrl) {
         const img = document.createElement("img");
         img.src = imageUrl;
@@ -312,12 +322,10 @@
         img.style.marginTop = "8px";
         bubble.appendChild(img);
       }
-
       messagesDiv.appendChild(msgDiv);
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-    // LocalStorage 복원
     function loadChatFromLocal() {
       const saved = JSON.parse(localStorage.getItem("kirriChatHistory") || "[]");
       if (saved.length > 0) saved.forEach(m => appendMessage(m.role, m.text));
@@ -325,7 +333,6 @@
         appendMessage("bot", "안녕~ 난 끼리야 💬 오늘 하루 어땠어?");
     }
 
-    // LocalStorage 저장
     function saveChatToLocal() {
       const messages = [];
       document.querySelectorAll("#messages .message").forEach(msg => {
@@ -336,7 +343,6 @@
       localStorage.setItem("kirriChatHistory", JSON.stringify(messages));
     }
 
-    // 시간 표시
     function updateTime() {
       const now = new Date();
       const options = { hour: '2-digit', minute: '2-digit', hour12: true };
@@ -344,7 +350,6 @@
     }
     setInterval(updateTime, 1000); updateTime();
 
-    // 날씨 표시
     async function updateWeather() {
       try {
         const res = await fetch("https://wttr.in/Seoul?format=%C+%t");
@@ -361,29 +366,21 @@
     }
     updateWeather();
 
-    // 초기화
     loadChatFromLocal();
-
     sendBtn.addEventListener("click", sendMessage);
-    input.addEventListener("keypress", (e) => { if (e.key === "Enter") sendMessage(); });
+    input.addEventListener("keypress", e => { if (e.key === "Enter") sendMessage(); });
     window.addEventListener("beforeunload", saveChatToLocal);
 
-    // 메시지 전송
     function sendMessage() {
       const text = input.value.trim();
-      if (text === "") return;
+      if (!text) return;
       appendMessage("user", text);
       input.value = "";
-
       const formData = new FormData();
       formData.append("message", text);
-
       fetch("/chat", { method: "POST", body: formData })
         .then(res => res.json())
-        .then(data => {
-          appendMessage("bot", data.response);
-          saveChatToLocal();
-        })
+        .then(data => { appendMessage("bot", data.response); saveChatToLocal(); })
         .catch(err => console.error(err));
     }
 
@@ -393,17 +390,12 @@
       const formData = new FormData();
       formData.append("image", file);
       appendMessage("user", "(이미지 전송)");
-
       fetch("/chat", { method: "POST", body: formData })
         .then(res => res.json())
-        .then(data => {
-          appendMessage("bot", data.response, data.image_url || null);
-          saveChatToLocal();
-        })
+        .then(data => { appendMessage("bot", data.response, data.image_url || null); saveChatToLocal(); })
         .catch(err => console.error(err));
     });
 
-    // 채팅 초기화
     function resetChat() {
       if (confirm("정말 채팅을 새로 시작할까요?")) {
         localStorage.removeItem("kirriChatHistory");
@@ -411,44 +403,35 @@
       }
     }
 
-    // 🎨 꾸미기 창
     const settingsPanel = document.getElementById("settings-panel");
     const overlay = document.getElementById("overlay");
 
-    function openSettings() {
-      settingsPanel.style.display = "block";
-      overlay.style.display = "block";
-    }
+    function openSettings() { settingsPanel.style.display = "block"; overlay.style.display = "block"; }
+    function closeSettings() { settingsPanel.style.display = "none"; overlay.style.display = "none"; document.getElementById("mascot-img").src = mascotImg; }
 
-    function closeSettings() {
-      settingsPanel.style.display = "none";
-      overlay.style.display = "none";
-      document.getElementById("mascot-img").src = mascotImg;
-    }
-
-    // 탭 전환
     function switchTab(tab) {
-      document.querySelectorAll(".tab-btn").forEach(btn => btn.classList.remove("active"));
-      document.querySelectorAll(".tab-content").forEach(tabC => tabC.classList.remove("active"));
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
       document.querySelector(`.tab-btn[onclick*='${tab}']`).classList.add("active");
       document.getElementById(`${tab}-tab`).classList.add("active");
     }
 
-    // 선택 함수들
-    function selectAvatar(path) {
+    function selectAvatar(path, e) {
+      document.querySelectorAll("#avatars img").forEach(i => i.classList.remove("selected"));
+      e.target.classList.add("selected");
       const fullPath = `/static/${path}`;
       localStorage.setItem("userAvatar", fullPath);
       userAvatar = fullPath;
-      alert("아바타가 변경되었습니다!");
     }
 
-    function selectMascot(file) {
+    function selectMascot(file, e) {
+      document.querySelectorAll("#mascots img").forEach(i => i.classList.remove("selected"));
+      e.target.classList.add("selected");
       const fullPath = `/static/${file}`;
       localStorage.setItem("kirriMascot", fullPath);
       mascotImg = fullPath;
-      alert("끼리 마스코트가 변경되었습니다!");
+      document.getElementById("mascot-img").src = fullPath;
     }
   </script>
 </body>
 </html>
-
