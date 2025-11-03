@@ -243,4 +243,6 @@ def report():
     )
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    import os
+    port = int(os.environ.get("PORT", 10000))  # Render가 지정한 포트를 읽음
+    app.run(host="0.0.0.0", port=port)
