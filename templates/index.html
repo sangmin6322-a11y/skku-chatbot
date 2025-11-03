@@ -80,9 +80,7 @@
       transition: 0.2s;
     }
 
-    #header-right button:hover {
-      background: rgba(255,255,255,0.45);
-    }
+    #header-right button:hover { background: rgba(255,255,255,0.45); }
 
     #messages {
       flex: 1;
@@ -92,20 +90,13 @@
       flex-direction: column;
     }
 
-    .message {
-      margin: 8px 0;
-      display: flex;
-      align-items: flex-start;
-    }
-
+    .message { margin: 8px 0; display: flex; align-items: flex-start; }
     .bot { flex-direction: row; }
     .user { flex-direction: row-reverse; }
 
     .profile {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      margin: 0 8px;
+      width: 40px; height: 40px;
+      border-radius: 50%; margin: 0 8px;
       box-shadow: 0 2px 4px rgba(0,0,0,0.15);
     }
 
@@ -160,6 +151,7 @@
 
     #upload-btn:hover { color: #58aafc; }
 
+    /* 🎨 꾸미기 창 스타일 */
     #settings-panel {
       position: absolute;
       top: 50%; left: 50%;
@@ -167,7 +159,7 @@
       background: white;
       border-radius: 15px;
       box-shadow: 0 8px 20px rgba(0,0,0,0.15);
-      width: 300px;
+      width: 320px;
       padding: 20px;
       text-align: center;
       display: none;
@@ -175,6 +167,27 @@
     }
 
     #settings-panel h3 { color: #2a6fb4; margin-bottom: 10px; }
+
+    #tab-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .tab-btn {
+      background: #d6eaff;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: 0.2s;
+    }
+    .tab-btn.active { background: #58aafc; color: white; }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
 
     .avatar-option {
       width: 60px; height: 60px;
@@ -208,7 +221,7 @@
   <div id="chatbox">
     <div id="header">
       <div id="header-left">
-        <img src="{{ url_for('static', filename='mascot.png') }}" alt="끼리" />
+        <img id="mascot-img" src="{{ url_for('static', filename='mascot.png') }}" alt="끼리" />
         <span>끼리 챗봇 💬</span>
       </div>
       <div id="header-right">
@@ -231,25 +244,45 @@
 
     <div id="overlay"></div>
     <div id="settings-panel">
-      <h3>아바타 선택 🎨</h3>
-      <div id="avatars">
-        <img src="{{ url_for('static', filename='avatars/ava1.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava1.png')">
-        <img src="{{ url_for('static', filename='avatars/ava2.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava2.png')">
-        <img src="{{ url_for('static', filename='avatars/ava3.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava3.png')">
-        <img src="{{ url_for('static', filename='avatars/ava4.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava4.png')">
+      <h3>꾸미기 🎨</h3>
+      <div id="tab-buttons">
+        <button class="tab-btn active" onclick="switchTab('avatar')">아바타</button>
+        <button class="tab-btn" onclick="switchTab('mascot')">마스코트</button>
       </div>
+
+      <div id="avatar-tab" class="tab-content active">
+        <p>내 프로필 아바타 선택 👤</p>
+        <div id="avatars">
+          <img src="{{ url_for('static', filename='avatars/ava1.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava1.png')">
+          <img src="{{ url_for('static', filename='avatars/ava2.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava2.png')">
+          <img src="{{ url_for('static', filename='avatars/ava3.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava3.png')">
+          <img src="{{ url_for('static', filename='avatars/ava4.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava4.png')">
+        </div>
+      </div>
+
+      <div id="mascot-tab" class="tab-content">
+        <p>끼리(봇) 마스코트 선택 🤖</p>
+        <div id="mascots">
+          <img src="{{ url_for('static', filename='mascot00.png') }}" class="avatar-option" onclick="selectMascot('mascot00.png')">
+          <img src="{{ url_for('static', filename='mascot01.png') }}" class="avatar-option" onclick="selectMascot('mascot01.png')">
+          <img src="{{ url_for('static', filename='mascot02.png') }}" class="avatar-option" onclick="selectMascot('mascot02.png')">
+          <img src="{{ url_for('static', filename='mascot03.png') }}" class="avatar-option" onclick="selectMascot('mascot03.png')">
+        </div>
+      </div>
+
       <button class="close-btn" onclick="closeSettings()">닫기</button>
     </div>
   </div>
 
   <script>
-    const username = "{{ username }}";
     const chatHistory = {{ history|tojson|default("[]") }};
     const messagesDiv = document.getElementById("messages");
     const input = document.getElementById("input");
     const sendBtn = document.getElementById("send-btn");
     const imageInput = document.getElementById("image-input");
+
     let userAvatar = localStorage.getItem("userAvatar") || "https://cdn-icons-png.flaticon.com/512/847/847969.png";
+    let mascotImg = localStorage.getItem("kirriMascot") || "{{ url_for('static', filename='mascot.png') }}";
 
     // 🧩 메시지 추가
     function appendMessage(role, text, imageUrl = null) {
@@ -258,7 +291,7 @@
 
       const profileImg = document.createElement("img");
       profileImg.classList.add("profile");
-      profileImg.src = (role === "bot") ? "{{ url_for('static', filename='mascot.png') }}" : userAvatar;
+      profileImg.src = (role === "bot") ? mascotImg : userAvatar;
 
       const bubble = document.createElement("div");
       bubble.classList.add("bubble");
@@ -280,15 +313,15 @@
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-    // 🔁 LocalStorage 복원
+    // LocalStorage 복원
     function loadChatFromLocal() {
       const saved = JSON.parse(localStorage.getItem("kirriChatHistory") || "[]");
       if (saved.length > 0) saved.forEach(m => appendMessage(m.role, m.text));
       else if (chatHistory.length === 0)
-        appendMessage("bot", "안녕~ 난 끼리야 💬 어떤 얘기 하고 싶어서 찾아왔어? 참고로 비밀은 보장되니까 걱정 말구 편하게 말해봐 😊");
+        appendMessage("bot", "안녕~ 난 끼리야 💬 오늘 하루 어땠어?");
     }
 
-    // 💾 LocalStorage 저장
+    // LocalStorage 저장
     function saveChatToLocal() {
       const messages = [];
       document.querySelectorAll("#messages .message").forEach(msg => {
@@ -299,7 +332,7 @@
       localStorage.setItem("kirriChatHistory", JSON.stringify(messages));
     }
 
-    // 🕒 시간 표시
+    // 시간 표시
     function updateTime() {
       const now = new Date();
       const options = { hour: '2-digit', minute: '2-digit', hour12: true };
@@ -307,7 +340,7 @@
     }
     setInterval(updateTime, 1000); updateTime();
 
-    // 🌤 날씨 표시
+    // 날씨 표시
     async function updateWeather() {
       try {
         const res = await fetch("https://wttr.in/Seoul?format=%C+%t");
@@ -331,7 +364,7 @@
     input.addEventListener("keypress", (e) => { if (e.key === "Enter") sendMessage(); });
     window.addEventListener("beforeunload", saveChatToLocal);
 
-    // ✉️ 메시지 전송
+    // 메시지 전송
     function sendMessage() {
       const text = input.value.trim();
       if (text === "") return;
@@ -366,7 +399,7 @@
         .catch(err => console.error(err));
     });
 
-    // 🧹 채팅 초기화
+    // 채팅 초기화
     function resetChat() {
       if (confirm("정말 채팅을 새로 시작할까요?")) {
         localStorage.removeItem("kirriChatHistory");
@@ -374,7 +407,7 @@
       }
     }
 
-    // 🎨 설정창
+    // 🎨 꾸미기 창
     const settingsPanel = document.getElementById("settings-panel");
     const overlay = document.getElementById("overlay");
 
@@ -386,14 +419,32 @@
     function closeSettings() {
       settingsPanel.style.display = "none";
       overlay.style.display = "none";
+      document.getElementById("mascot-img").src = mascotImg;
     }
 
+    // 탭 전환
+    function switchTab(tab) {
+      document.querySelectorAll(".tab-btn").forEach(btn => btn.classList.remove("active"));
+      document.querySelectorAll(".tab-content").forEach(tabC => tabC.classList.remove("active"));
+      document.querySelector(`.tab-btn[onclick*='${tab}']`).classList.add("active");
+      document.getElementById(`${tab}-tab`).classList.add("active");
+    }
+
+    // 선택 함수들
     function selectAvatar(path) {
-      localStorage.setItem("userAvatar", `/static/${path}`);
-      userAvatar = `/static/${path}`;
-      closeSettings();
+      const fullPath = `/static/${path}`;
+      localStorage.setItem("userAvatar", fullPath);
+      userAvatar = fullPath;
       alert("아바타가 변경되었습니다!");
+    }
+
+    function selectMascot(file) {
+      const fullPath = `/static/${file}`;
+      localStorage.setItem("kirriMascot", fullPath);
+      mascotImg = fullPath;
+      alert("끼리 마스코트가 변경되었습니다!");
     }
   </script>
 </body>
 </html>
+
