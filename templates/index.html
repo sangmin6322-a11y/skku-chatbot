@@ -396,10 +396,22 @@
         .catch(err => console.error(err));
     });
 
-    function resetChat() {
+    // ✅ 완전 수정된 새로고침 함수
+    async function resetChat() {
       if (confirm("정말 채팅을 새로 시작할까요?")) {
         localStorage.removeItem("kirriChatHistory");
-        fetch("/reset", { method: "POST" }).then(() => location.reload());
+        try {
+          const res = await fetch("/reset", {
+            method: "POST",
+            credentials: "include" // ✅ 세션 쿠키 함께 전송
+          });
+          const data = await res.json();
+          alert(data.message || "대화가 초기화되었습니다.");
+          location.reload();
+        } catch (err) {
+          alert("⚠️ 새로고침 중 오류가 발생했어요.");
+          console.error(err);
+        }
       }
     }
 
