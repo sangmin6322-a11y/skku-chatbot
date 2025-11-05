@@ -1,4 +1,4 @@
-import os, re, random
+iimport os, re, random
 from flask import current_app
 from openai import OpenAI
 from datetime import datetime
@@ -19,6 +19,7 @@ phq_questions = [
 phq_context = {}  # {user_id: {"index": int, "score": int, "cool": int}}
 
 def classify_phq_response(text: str) -> int:
+    """사용자 답변을 0~3점으로 점수화 (PHQ-A 기준)"""
     text = text.lower()
     if re.search(r"(전혀|없|괜찮|안 그래|별로 아님|거의 없|드물|잘 안)", text): return 0
     if re.search(r"(가끔|며칠|조금|약간|때때로|간혹)", text): return 1
@@ -73,21 +74,22 @@ def maybe_ask_phq(user_input, user_id):
 
     return None
 
+
 # === GPT 엔진 ===
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def load_recent_memory(user_id, limit=10):
-    """DB에서 최근 N턴 대화 불러오기"""
+    """DB에서 최근 N턴 대화 불러오기 (user/assistant만)"""
     with current_app.app_context():
         logs = (ChatLog.query
-                .filter(ChatLog.user_id == user_id, ChatLog.role.in_(["user", "bot"]))
+                .filter(ChatLog.user_id == user_id, ChatLog.role.in_(["user", "assistant"]))
                 .order_by(ChatLog.timestamp.desc())
                 .limit(limit)
                 .all())
-        # 최근순 → 오래된순으로 역정렬
         logs.reverse()
         messages = [{"role": log.role, "content": log.message} for log in logs]
         return messages
+
 
 def classify_and_respond(user_input, user_id=None):
     """GPT 대화 + PHQ 추적 + DB 기반 기억 유지"""
@@ -98,7 +100,7 @@ def classify_and_respond(user_input, user_id=None):
     natural_q = maybe_ask_phq(text, user_id)
     if natural_q:
         with current_app.app_context():
-            db.session.add(ChatLog(user_id=user_id, role="bot", message=natural_q))
+            db.session.add(ChatLog(user_id=user_id, role="assistant", message=natural_q))
             db.session.commit()
         return natural_q
 
@@ -123,13 +125,14 @@ def classify_and_respond(user_input, user_id=None):
         )
         reply = completion.choices[0].message.content.strip()
 
-        # 🔹 DB에 대화 저장 (기억 영구 유지)
+        # 🔹 DB에 대화 저장 (assistant role 사용)
         with current_app.app_context():
             db.session.add(ChatLog(user_id=user_id, role="user", message=text))
-            db.session.add(ChatLog(user_id=user_id, role="bot", message=reply))
+            db.session.add(ChatLog(user_id=user_id, role="assistant", message=reply))
             db.session.commit()
 
         return reply
 
     except Exception as e:
         return f"⚠️ AI 응답 오류: {str(e)}"
+
