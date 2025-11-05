@@ -1,4 +1,4 @@
-iimport os, re, random
+import os, re, random
 from flask import current_app
 from openai import OpenAI
 from datetime import datetime
