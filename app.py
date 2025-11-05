@@ -15,7 +15,7 @@ load_dotenv()
 # ✅ Flask 설정
 app = Flask(__name__, static_folder='static', template_folder='templates')
 
-# 🔐 세션 보안키 (공유 차단용) - 환경변수에서 가져오거나 랜덤 생성
+# 🔐 세션 보안키 (공유 차단용)
 app.secret_key = os.getenv("SECRET_KEY", os.urandom(24))
 
 # ✅ 세션 & 쿠키 보안 강화
@@ -26,7 +26,7 @@ app.config.update(
     REMEMBER_COOKIE_DURATION=timedelta(days=7),
     REMEMBER_COOKIE_SAMESITE="None",
     REMEMBER_COOKIE_SECURE=True,
-    PERMANENT_SESSION_LIFETIME=timedelta(hours=1)  # 비활동 1시간 후 자동 만료
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=1)
 )
 
 # ✅ CORS 설정
@@ -46,7 +46,7 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
-# ✅ 모델
+# ✅ 모델 정의
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
@@ -72,10 +72,14 @@ def register():
     if request.method == "POST":
         username = request.form["username"]
         password = request.form["password"]
-        hashed_pw = generate_password_hash(password)
+
+        # ✅ 명시적으로 해시 알고리즘 지정 (환경 불일치 방지)
+        hashed_pw = generate_password_hash(password, method="pbkdf2:sha256")
+
         if User.query.filter_by(username=username).first():
             flash("이미 존재하는 아이디입니다.")
             return redirect(url_for("register"))
+
         new_user = User(username=username, password=hashed_pw)
         db.session.add(new_user)
         db.session.commit()
@@ -90,20 +94,21 @@ def login():
         username = request.form["username"]
         password = request.form["password"]
         user = User.query.filter_by(username=username).first()
+
         if user and check_password_hash(user.password, password):
             login_user(user, remember=True)
-            session.permanent = True  # 세션 지속 허용
+            session.permanent = True
             return redirect(url_for("chat_page"))
         else:
             flash("로그인 실패. 아이디나 비밀번호를 확인하세요.")
     return render_template("login.html")
 
-# ✅ 로그아웃 (세션 완전 초기화)
+# ✅ 로그아웃
 @app.route("/logout")
 @login_required
 def logout():
     logout_user()
-    session.clear()  # 모든 세션 데이터 삭제
+    session.clear()
     flash("로그아웃되었습니다.")
     return redirect(url_for("login"))
 
@@ -129,6 +134,7 @@ def chat():
     db.session.commit()
     return jsonify({"response": bot_reply})
 
+# ✅ 새로고침(대화 초기화)
 @app.route("/reset", methods=["POST"])
 @login_required
 def reset_chat():
@@ -156,7 +162,7 @@ def analyze():
 
     total_score = sum(daily_score.values())
 
-        # ✅ PHQ-A 기반 새 해석 로직
+    # ✅ PHQ-A 기반 해석
     if total_score == 0:
         level, advice = "정상 😊", "네가 한 말들을 보니 우울감이 없는 상태야. 지금처럼 잘 지내자!"
     elif 1 <= total_score <= 4:
@@ -194,6 +200,7 @@ def analyze():
                            advice=advice,
                            graph=graph_path)
 
+# ✅ 리포트
 @app.route("/report")
 @login_required
 def report():
@@ -213,7 +220,6 @@ def report():
 
     total_score = sum(daily_score.values())
 
-        # ✅ PHQ-A 기반 새 해석 로직
     if total_score == 0:
         level, advice = "정상 😊", "네가 한 말들을 보니 우울감이 없는 상태야. 지금처럼 잘 지내자!"
     elif 1 <= total_score <= 4:
@@ -257,4 +263,3 @@ def report():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-
