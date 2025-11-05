@@ -2,42 +2,9 @@ import os, re, random
 from flask import current_app
 from openai import OpenAI
 from datetime import datetime
-from app import db, ChatLog   # ✅ 분석 그래프에 반영하려면 DB 접근 필요
+from app import db, ChatLog   # ✅ DB 접근 필요
 
-# === 감정 + 일상 카테고리 ===
-daily_categories = {
-    "무맥락 애매한 것들": [
-        "에바야", "애매하긴 해", "가면 가", "하면 해", "ㄱㄱ", "가보자고",
-        "어쩌겠어", "해야지 뭐", "아 하기 싫음", "아니 근데 진짜", "ㄹㅇ", "진심", "헐", "대박",
-        "겁나", "개 ", "ㅈㄴ", "ㄱㅇㅇ", "ㄱㅇㄱ", "미쳤다", "와", "그니까", "음", "ㅠㅠ"
-    ],
-    "인사/자기소개": ["안녕", "하이", "반가워", "헬로", "누구", "너 뭐야", "이름", "소개"],
-    "감사/칭찬": ["고마워", "감사", "덕분", "사랑해", "좋아해", "대단해", "멋지다", "굿", "잘했어"],
-    "놀람/감탄": ["헐", "세상에", "진짜?", "우와", "대박", "소름", "헉"],
-    "욕설/부정": ["짜증", "화나", "빡쳐", "싫어", "우울", "힘들", "불안", "걱정", "지쳤"],
-    "밥/음식": ["밥", "식사", "라면", "치킨", "피자", "야식", "과자", "떡볶이"],
-    "음료/디저트": ["커피", "차", "버블티", "콜라", "사이다", "디저트", "아이스크림"],
-    "날씨/계절": ["날씨", "비", "눈", "더워", "춥", "가을", "여름", "겨울", "봄"],
-    "공부/학교": ["공부", "학교", "시험", "성적", "과제", "수업", "교수님"],
-    "관계/친구": ["친구", "가족", "연애", "사람", "관계"]
-}
-
-daily_responses = {
-    "무맥락 애매한 것들": ["음… 그렇구나.", "그럴 수도 있지.", "ㅎㅎ 알겠어.", "사람마다 다르더라."],
-    "인사/자기소개": ["안녕! 만나서 반가워 😊", "하이~ 오늘 기분 어때?", "난 끼리야 🤖 네 얘기 들어주는 친구!"],
-    "감사/칭찬": ["나도 고마워 🙏", "그렇게 말해주니까 기분 좋다 😀", "너 진짜 착하네!"],
-    "놀람/감탄": ["헐 대박…", "진짜?", "와… 신기하다!", "우와~ 멋지다!"],
-    "욕설/부정": ["많이 힘든가 봐 😢", "속상했겠다.", "괜찮아, 천천히 얘기해도 돼."],
-    "밥/음식": ["밥은 먹었어?", "요즘 자주 먹는 음식 있어?", "야식 자주 먹어?", "치킨은 언제 먹어도 옳지 🍗"],
-    "음료/디저트": ["커피 자주 마셔?", "단 거 좋아해? 🍫", "버블티 좋아해?"],
-    "날씨/계절": ["오늘 날씨 어땠어?", "비 오는 날 기분 달라져?", "요즘 쌀쌀하지 않아?"],
-    "공부/학교": ["공부하느라 힘들지?", "시험 기간이라 바쁘겠네.", "요즘 수업 재밌어?"],
-    "관계/친구": ["최근에 친구들이랑 재밌는 일 있었어?", "가족들이랑 잘 지내?", "요즘 외롭진 않아?"]
-}
-
-default_responses = ["음… 잘 모르겠어.", "그렇구나~ 좀 더 얘기해줄래?", "흥미롭네.", "재밌는 얘기야!"]
-
-# === 자연스러운 PHQ-A 리딩 모듈 ===
+# === PHQ-A 리딩 모듈 ===
 phq_questions = [
     "요즘은 의욕이 좀 떨어진 느낌이야?",
     "잠은 잘 자? 아니면 뒤척이거나 자주 깨?",
@@ -59,38 +26,33 @@ def classify_phq_response(text: str) -> int:
     if re.search(r"(매일|맨날|항상|늘|매번|하루종일|계속|매 순간)", text): return 3
     return 1
 
-def interpret_phq_level(score: int):
-    if score < 5: return "정상 😊", "요즘 마음이 꽤 안정적인 시기야."
-    elif score < 10: return "가벼운 우울 😐", "조금 지쳐 있는 듯해. 잠깐 쉬어가도 좋아 ☕"
-    elif score < 15: return "중등도 우울 😔", "마음이 무겁게 느껴져. 가까운 사람에게 털어놔봐."
-    else: return "심한 우울 😢", "많이 힘들어 보여. 혼자 버티지 말고 꼭 주변 도움을 받아봐."
-
 def update_phq(user_input, user_id):
-    """답변을 점수화하고 DB에도 기록"""
-    if user_id not in phq_context: return
+    """PHQ 문항 답변 점수화 + DB 기록"""
+    if user_id not in phq_context:
+        return
     ctx = phq_context[user_id]
     if 0 < ctx["index"] <= len(phq_questions):
         score = classify_phq_response(user_input)
         ctx["score"] += score
         phq_context[user_id] = ctx
-        # DB에 감정 기록 추가 → analyze 그래프 반영
         with current_app.app_context():
-            db.session.add(ChatLog(user_id=user_id, role="system",
-                                   message=f"[PHQ] {phq_questions[ctx['index']-1]} → {score}점"))
+            db.session.add(ChatLog(
+                user_id=user_id,
+                role="system",
+                message=f"[PHQ] {phq_questions[ctx['index']-1]} → {score}점"
+            ))
             db.session.commit()
 
 def maybe_ask_phq(user_input, user_id):
-    """대화 중 자연스럽게 PHQ 질문을 던짐"""
+    """감정 단서 감지 → PHQ 질문 자연스럽게 삽입"""
     cues = ["힘들", "지쳐", "귀찮", "짜증", "불안", "피곤", "우울", "공부", "잠", "식욕", "의욕", "무기력"]
     ctx = phq_context.get(user_id, {"index": 0, "score": 0, "cool": 0})
 
-    # 연속 질문 방지 쿨타임
     if ctx["cool"] > 0:
         ctx["cool"] -= 1
         phq_context[user_id] = ctx
         return None
 
-    # 사용자가 감정 단서를 말했을 때 다음 문항
     if any(c in user_input for c in cues):
         if ctx["index"] < len(phq_questions):
             q = phq_questions[ctx["index"]]
@@ -98,51 +60,76 @@ def maybe_ask_phq(user_input, user_id):
             ctx["cool"] = 3
             phq_context[user_id] = ctx
             prefix = random.choice([
-                "그런 말 들으니까 좀 걱정돼.",
+                "그런 얘길 들으니까 좀 걱정돼.",
                 "음… 요즘 네 상태가 살짝 걱정돼서 그런데,",
                 "혹시 궁금해서 묻는데,"
             ])
             return f"{prefix} {q}"
 
-    # 9문항 완료 시 결과 대화
     if ctx["index"] >= len(phq_questions):
-        level, msg = interpret_phq_level(ctx["score"])
+        total = ctx["score"]
         phq_context[user_id] = {"index": 0, "score": 0, "cool": 0}
-        return f"지금까지 얘기 들어보니까 {level} 수준인 것 같아.\n{msg}"
+        return f"테스트가 끝났어! (총점: {total}점)\n결과는 리포트에서 볼 수 있어 😊"
 
     return None
 
-# === 기본 감정/일상 로직 + GPT 백업 ===
+# === GPT 엔진 ===
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+def load_recent_memory(user_id, limit=10):
+    """DB에서 최근 N턴 대화 불러오기"""
+    with current_app.app_context():
+        logs = (ChatLog.query
+                .filter(ChatLog.user_id == user_id, ChatLog.role.in_(["user", "bot"]))
+                .order_by(ChatLog.timestamp.desc())
+                .limit(limit)
+                .all())
+        # 최근순 → 오래된순으로 역정렬
+        logs.reverse()
+        messages = [{"role": log.role, "content": log.message} for log in logs]
+        return messages
+
 def classify_and_respond(user_input, user_id=None):
-    """사용자 입력 → 자연 리딩 + 규칙형 + GPT 백업"""
+    """GPT 대화 + PHQ 추적 + DB 기반 기억 유지"""
     text = user_input.strip()
 
-    # 🔹 PHQ 진행/업데이트
+    # 🔹 PHQ 점수 업데이트
     update_phq(text, user_id)
     natural_q = maybe_ask_phq(text, user_id)
     if natural_q:
+        with current_app.app_context():
+            db.session.add(ChatLog(user_id=user_id, role="bot", message=natural_q))
+            db.session.commit()
         return natural_q
 
-    # 🔹 감정 관련
-    for category, kws in daily_categories.items():
-        if any(k in text for k in kws):
-            return random.choice(daily_responses.get(category, default_responses))
+    # 🔹 DB에서 최근 대화 로드
+    recent_messages = load_recent_memory(user_id)
 
-    # 🔹 GPT 백업
+    # 🔹 GPT 입력 구성
+    messages = [
+        {"role": "system", "content": (
+            "너는 '끼리'라는 이름의 다정하고 공감 잘하는 친구야. "
+            "대화는 자연스럽고 따뜻하게 이어가고, "
+            "사용자의 감정 변화나 피로도를 눈치채면 조용히 위로해줘. "
+            "이전 대화 맥락을 기억해서 어색하지 않게 이어가. "
+            "필요할 때는 PHQ-A 문항을 자연스럽게 떠올리듯 묻기도 해."
+        )}
+    ] + recent_messages + [{"role": "user", "content": text}]
+
     try:
         completion = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content":
-                 "너는 '끼리'라는 이름의 다정하고 공감 잘하는 친구야. "
-                 "대화는 자연스럽고 따뜻하게 이어가. "
-                 "사용자의 감정을 이해하고, 공감 어린 말투로 대답해."},
-                {"role": "user", "content": text}
-            ]
+            messages=messages
         )
-        return completion.choices[0].message.content.strip()
+        reply = completion.choices[0].message.content.strip()
+
+        # 🔹 DB에 대화 저장 (기억 영구 유지)
+        with current_app.app_context():
+            db.session.add(ChatLog(user_id=user_id, role="user", message=text))
+            db.session.add(ChatLog(user_id=user_id, role="bot", message=reply))
+            db.session.commit()
+
+        return reply
 
     except Exception as e:
         return f"⚠️ AI 응답 오류: {str(e)}"
