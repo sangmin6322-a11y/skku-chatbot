@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -14,16 +14,19 @@ load_dotenv()
 
 # ✅ Flask 설정
 app = Flask(__name__, static_folder='static', template_folder='templates')
-app.secret_key = os.getenv("SECRET_KEY", "secret-key")
 
-# ✅ 세션 & 쿠키
+# 🔐 세션 보안키 (공유 차단용) - 환경변수에서 가져오거나 랜덤 생성
+app.secret_key = os.getenv("SECRET_KEY", os.urandom(24))
+
+# ✅ 세션 & 쿠키 보안 강화
 app.config.update(
     SESSION_COOKIE_SAMESITE="None",
     SESSION_COOKIE_SECURE=True,
     SESSION_COOKIE_HTTPONLY=True,
     REMEMBER_COOKIE_DURATION=timedelta(days=7),
     REMEMBER_COOKIE_SAMESITE="None",
-    REMEMBER_COOKIE_SECURE=True
+    REMEMBER_COOKIE_SECURE=True,
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=1)  # 비활동 1시간 후 자동 만료
 )
 
 # ✅ CORS 설정
@@ -32,11 +35,10 @@ CORS(app, resources={r"/*": {"origins": [
     "https://skku-chatbot.onrender.com"
 ]}}, supports_credentials=True)
 
-# ✅ DB
+# ✅ DB 설정
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL", "sqlite:///users.db")
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"pool_pre_ping": True}
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 db = SQLAlchemy(app)
 
 # ✅ Flask-Login
@@ -90,16 +92,18 @@ def login():
         user = User.query.filter_by(username=username).first()
         if user and check_password_hash(user.password, password):
             login_user(user, remember=True)
+            session.permanent = True  # 세션 지속 허용
             return redirect(url_for("chat_page"))
         else:
             flash("로그인 실패. 아이디나 비밀번호를 확인하세요.")
     return render_template("login.html")
 
-# ✅ 로그아웃
+# ✅ 로그아웃 (세션 완전 초기화)
 @app.route("/logout")
 @login_required
 def logout():
     logout_user()
+    session.clear()  # 모든 세션 데이터 삭제
     flash("로그아웃되었습니다.")
     return redirect(url_for("login"))
 
@@ -152,15 +156,19 @@ def analyze():
 
     total_score = sum(daily_score.values())
 
-    # ✅ 기본값 0점으로 수정
+        # ✅ PHQ-A 기반 새 해석 로직
     if total_score == 0:
-        level, advice = "정상 😊", "최근 대화에서 부정적인 감정은 거의 보이지 않아요. 잘 지내고 있네요!"
-    elif total_score <= 3:
-        level, advice = "경도 우울 😐", "가벼운 스트레스나 피로가 느껴져요. 충분히 쉬고 좋아하는 걸 해보세요."
-    elif total_score <= 6:
-        level, advice = "중등도 우울 😔", "감정적 피로가 누적된 것 같아요. 가까운 사람에게 털어놓는 것도 좋아요."
+        level, advice = "정상 😊", "네가 한 말들을 보니 우울감이 없는 상태야. 지금처럼 잘 지내자!"
+    elif 1 <= total_score <= 4:
+        level, advice = "경미한 저하 😐", "잠깐 기분이 저하된 상태일 수도 있겠다. 가벼운 산책 추천해."
+    elif 5 <= total_score <= 9:
+        level, advice = "약한 우울 😔", "약간 우울한 기분이 느껴져. 수면이나 식습관을 규칙적으로 해보자."
+    elif 10 <= total_score <= 14:
+        level, advice = "중등도 우울 😞", "꽤 우울감이 느껴지는 상태야. 음악 듣거나 스트레칭 해보자."
+    elif 15 <= total_score <= 19:
+        level, advice = "심한 우울 😢", "우울감이 심해 보여. 주변에 이야기하거나 상담 도움을 받아보자."
     else:
-        level, advice = "고위험 😢", "최근 대화에서 심한 무기력감이 보여요. 전문 상담사에게 도움을 받아보는 게 좋겠어요."
+        level, advice = "중증 우울 ⚠️", "심한 우울감이 보여. 꼭 주변에 도움을 요청하자."
 
     if daily_score:
         dates = sorted(daily_score.keys())
@@ -205,17 +213,20 @@ def report():
 
     total_score = sum(daily_score.values())
 
-    # 감정 수준 판별
+        # ✅ PHQ-A 기반 새 해석 로직
     if total_score == 0:
-        level, advice = "정상 😊", "최근 대화에서 부정적인 감정은 거의 보이지 않아요. 잘 지내고 있네요!"
-    elif total_score <= 3:
-        level, advice = "경도 우울 😐", "가벼운 스트레스나 피로가 느껴져요. 충분히 쉬고 좋아하는 걸 해보세요."
-    elif total_score <= 6:
-        level, advice = "중등도 우울 😔", "감정적 피로가 누적된 것 같아요. 가까운 사람에게 털어놓는 것도 좋아요."
+        level, advice = "정상 😊", "네가 한 말들을 보니 우울감이 없는 상태야. 지금처럼 잘 지내자!"
+    elif 1 <= total_score <= 4:
+        level, advice = "경미한 저하 😐", "잠깐 기분이 저하된 상태일 수도 있겠다. 가벼운 산책 추천해."
+    elif 5 <= total_score <= 9:
+        level, advice = "약한 우울 😔", "약간 우울한 기분이 느껴져. 수면이나 식습관을 규칙적으로 해보자."
+    elif 10 <= total_score <= 14:
+        level, advice = "중등도 우울 😞", "꽤 우울감이 느껴지는 상태야. 음악 듣거나 스트레칭 해보자."
+    elif 15 <= total_score <= 19:
+        level, advice = "심한 우울 😢", "우울감이 심해 보여. 주변에 이야기하거나 상담 도움을 받아보자."
     else:
-        level, advice = "고위험 😢", "최근 대화에서 심한 무기력감이 보여요. 전문 상담사에게 도움을 받아보는 게 좋겠어요."
+        level, advice = "중증 우울 ⚠️", "심한 우울감이 보여. 꼭 주변에 도움을 요청하자."
 
-    # 그래프 생성
     if daily_score:
         dates = sorted(daily_score.keys())
         scores = [daily_score[d] for d in dates]
@@ -242,7 +253,8 @@ def report():
         graph=graph_path
     )
 
+# ✅ 앱 실행
 if __name__ == "__main__":
-    import os
-    port = int(os.environ.get("PORT", 10000))  # Render가 지정한 포트를 읽음
+    port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
