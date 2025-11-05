@@ -1,5 +1,4 @@
 import os, re, random
-from collections import deque
 from flask import current_app
 from openai import OpenAI
 from app import db, ChatLog
@@ -56,19 +55,8 @@ def handle_phq_flow(user_input, user_id):
                                    message=f"[PHQ] {PHQ_ITEMS[ctx['index']-1][1]} → {score}점"))
             db.session.commit()
 
-    # 다음 질문 준비
-    if ctx["index"] < len(PHQ_ITEMS):
-        q = PHQ_ITEMS[ctx["index"]][1]
-        ctx["index"] += 1
-        phq_state[user_id] = ctx
-        lead = random.choice([
-            "그런 말 들으니까 조금 더 궁금해졌어.",
-            "음… 혹시 하나만 더 물어봐도 될까?",
-            "조금 더 이해하고 싶어서 그러는데,"
-        ])
-        return f"{lead} {q}"
-    else:
-        # 모든 문항 완료 → 자동 리포트
+    # 모든 문항 완료 시 → 자동 리포트 안내
+    if ctx["index"] >= len(PHQ_ITEMS):
         ctx["done"] = True
         phq_state[user_id] = ctx
         total = ctx["score"]
@@ -87,8 +75,36 @@ def handle_phq_flow(user_input, user_id):
             msg = "많이 힘들어 보여. 꼭 주변의 도움을 받아보자."
 
         return (f"💡 지금까지 이야기해본 결과, 현재 상태는 **{mood}** 수준으로 보여.\n"
-                f"{msg}\n\n📊 리포트가 자동으로 완성되었어! "
-                f"상단 ‘리포트’ 버튼을 눌러 결과를 확인해봐.")
+                f"{msg}\n\n📊 리포트가 자동으로 완성됐어! "
+                f"상단 ‘리포트’ 버튼을 눌러 확인해봐.")
+
+    # 다음 질문 준비
+    q = PHQ_ITEMS[ctx["index"]][1]
+    ctx["index"] += 1
+    phq_state[user_id] = ctx
+
+    # 🌿 자연스러운 연결 멘트
+    neutral_bridges = [
+        "응, 알겠어.",
+        "그럴 수도 있지.",
+        "음, 그런 말 들으니까 생각나는데.",
+        "괜찮아, 솔직하게 말해줘서 고마워.",
+        "그런 답변도 괜찮아. 사람마다 다 다르잖아."
+    ]
+    lead_bridges = [
+        "조금 더 이해하고 싶어서 그러는데,",
+        "그럼 이번엔 다른 쪽으로 물어볼게.",
+        "음… 혹시 하나만 더 물어봐도 될까?",
+        "그렇구나. 그럼 궁금한 게 하나 생겼어."
+    ]
+
+    if re.search(r"(아니|없|별로|그냥|모르겠)", text):
+        bridge = random.choice(neutral_bridges)
+    else:
+        bridge = random.choice(["응, 흥미롭네.", "그렇구나.", "알겠어."])
+
+    follow = random.choice(lead_bridges)
+    return f"{bridge} {follow} {q}"
 
 
 # =========================
