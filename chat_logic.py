@@ -2,9 +2,11 @@ import os, re, random
 from flask import current_app
 from openai import OpenAI
 from datetime import datetime
-from app import db, ChatLog   # ✅ DB 접근 필요
+from app import db, ChatLog
 
-# === PHQ-A 리딩 모듈 ===
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# === PHQ-A ===
 phq_questions = [
     "요즘은 의욕이 좀 떨어진 느낌이야?",
     "잠은 잘 자? 아니면 뒤척이거나 자주 깨?",
@@ -16,10 +18,21 @@ phq_questions = [
     "사람 만나는 게 귀찮거나 피하고 싶을 때 있어?",
     "혹시 죽고 싶거나 사라지고 싶다는 생각이 든 적 있어?"
 ]
-phq_context = {}  # {user_id: {"index": int, "score": int, "cool": int}}
+phq_context = {}
+
+# === 기본 리드형 질문들 ===
+lead_prompts = [
+    "오늘 하루는 어땠어?",
+    "요즘은 기분이 좀 괜찮아?",
+    "최근에 즐겁거나 힘들었던 일 있었어?",
+    "요즘 잠은 잘 자?",
+    "기운이 좀 떨어지는 날이 많은 편이야?",
+    "최근에 밥맛은 어때?",
+    "요즘 집중 잘 돼?",
+    "사람 만나고 싶을 때보단 혼자 있고 싶을 때가 더 많아?",
+]
 
 def classify_phq_response(text: str) -> int:
-    """사용자 답변을 0~3점으로 점수화 (PHQ-A 기준)"""
     text = text.lower()
     if re.search(r"(전혀|없|괜찮|안 그래|별로 아님|거의 없|드물|잘 안)", text): return 0
     if re.search(r"(가끔|며칠|조금|약간|때때로|간혹)", text): return 1
@@ -28,32 +41,30 @@ def classify_phq_response(text: str) -> int:
     return 1
 
 def update_phq(user_input, user_id):
-    """PHQ 문항 답변 점수화 + DB 기록"""
-    if user_id not in phq_context:
-        return
+    if user_id not in phq_context: return
     ctx = phq_context[user_id]
     if 0 < ctx["index"] <= len(phq_questions):
         score = classify_phq_response(user_input)
         ctx["score"] += score
         phq_context[user_id] = ctx
         with current_app.app_context():
-            db.session.add(ChatLog(
-                user_id=user_id,
-                role="system",
-                message=f"[PHQ] {phq_questions[ctx['index']-1]} → {score}점"
-            ))
+            db.session.add(ChatLog(user_id=user_id, role="system",
+                                   message=f"[PHQ] {phq_questions[ctx['index']-1]} → {score}점"))
             db.session.commit()
 
 def maybe_ask_phq(user_input, user_id):
-    """감정 단서 감지 → PHQ 질문 자연스럽게 삽입"""
+    """리드형 질문과 PHQ를 결합"""
     cues = ["힘들", "지쳐", "귀찮", "짜증", "불안", "피곤", "우울", "공부", "잠", "식욕", "의욕", "무기력"]
     ctx = phq_context.get(user_id, {"index": 0, "score": 0, "cool": 0})
 
-    if ctx["cool"] > 0:
-        ctx["cool"] -= 1
+    # 감정 단서가 없어도 능동형 질문을 던짐
+    if ctx["index"] == 0 and random.random() < 0.4:
+        q = random.choice(lead_prompts)
+        ctx["cool"] = 2
         phq_context[user_id] = ctx
-        return None
+        return q
 
+    # 기존 PHQ 문항 진행
     if any(c in user_input for c in cues):
         if ctx["index"] < len(phq_questions):
             q = phq_questions[ctx["index"]]
@@ -67,19 +78,15 @@ def maybe_ask_phq(user_input, user_id):
             ])
             return f"{prefix} {q}"
 
+    # 완료 시 안내
     if ctx["index"] >= len(phq_questions):
         total = ctx["score"]
         phq_context[user_id] = {"index": 0, "score": 0, "cool": 0}
-        return f"테스트가 끝났어! (총점: {total}점)\n결과는 리포트에서 볼 수 있어 😊"
+        return f"테스트가 끝났어! (총점: {total}점)\n리포트에서 결과 확인할 수 있어 😊"
 
     return None
 
-
-# === GPT 엔진 ===
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
 def load_recent_memory(user_id, limit=10):
-    """DB에서 최근 N턴 대화 불러오기 (user/assistant만)"""
     with current_app.app_context():
         logs = (ChatLog.query
                 .filter(ChatLog.user_id == user_id, ChatLog.role.in_(["user", "assistant"]))
@@ -87,15 +94,11 @@ def load_recent_memory(user_id, limit=10):
                 .limit(limit)
                 .all())
         logs.reverse()
-        messages = [{"role": log.role, "content": log.message} for log in logs]
-        return messages
-
+        return [{"role": log.role, "content": log.message} for log in logs]
 
 def classify_and_respond(user_input, user_id=None):
-    """GPT 대화 + PHQ 추적 + DB 기반 기억 유지"""
     text = user_input.strip()
 
-    # 🔹 PHQ 점수 업데이트
     update_phq(text, user_id)
     natural_q = maybe_ask_phq(text, user_id)
     if natural_q:
@@ -104,17 +107,15 @@ def classify_and_respond(user_input, user_id=None):
             db.session.commit()
         return natural_q
 
-    # 🔹 DB에서 최근 대화 로드
+    # 최근 대화 불러오기
     recent_messages = load_recent_memory(user_id)
 
-    # 🔹 GPT 입력 구성
     messages = [
         {"role": "system", "content": (
             "너는 '끼리'라는 이름의 다정하고 공감 잘하는 친구야. "
-            "대화는 자연스럽고 따뜻하게 이어가고, "
-            "사용자의 감정 변화나 피로도를 눈치채면 조용히 위로해줘. "
-            "이전 대화 맥락을 기억해서 어색하지 않게 이어가. "
-            "필요할 때는 PHQ-A 문항을 자연스럽게 떠올리듯 묻기도 해."
+            "사용자가 말하지 않아도 먼저 인사하거나 질문을 던져. "
+            "대화는 자연스럽고 따뜻하게 이어가며, 감정을 살피고 공감해줘. "
+            "필요할 때는 PHQ-A 문항처럼 자연스럽게 감정 관련 질문을 해."
         )}
     ] + recent_messages + [{"role": "user", "content": text}]
 
@@ -125,7 +126,6 @@ def classify_and_respond(user_input, user_id=None):
         )
         reply = completion.choices[0].message.content.strip()
 
-        # 🔹 DB에 대화 저장 (assistant role 사용)
         with current_app.app_context():
             db.session.add(ChatLog(user_id=user_id, role="user", message=text))
             db.session.add(ChatLog(user_id=user_id, role="assistant", message=reply))
@@ -135,4 +135,3 @@ def classify_and_respond(user_input, user_id=None):
 
     except Exception as e:
         return f"⚠️ AI 응답 오류: {str(e)}"
-
