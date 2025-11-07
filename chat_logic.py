@@ -1,7 +1,6 @@
 import os, re, random
 from flask import current_app
 from openai import OpenAI
-from app import db, ChatLog
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -56,7 +55,7 @@ def get_phq_probability(user_input):
 def maybe_insert_phq(user_input, user_id):
     """일상 대화 중 확률적으로 PHQ 문항을 자연스럽게 삽입"""
     ctx = phq_state.get(user_id, {"index": 0, "score": 0, "done": False})
-    if ctx["done"]: 
+    if ctx["done"]:
         return None
 
     idx = ctx["index"]
@@ -86,6 +85,9 @@ def maybe_insert_phq(user_input, user_id):
 # ✨ GPT 기반 자연 대화
 # =========================
 def classify_and_respond(user_input, user_id=None):
+    # ✅ import를 함수 안으로 이동시켜 순환 참조 방지
+    from app import db, ChatLog
+
     # 리포트 직접 요청
     if re.search(r"(리포트|보고서|결과|점수|분석)", user_input):
         return "리포트는 자동으로 만들어져! 상단의 ‘리포트’ 버튼을 눌러 확인해봐 😊"
@@ -124,7 +126,7 @@ def classify_and_respond(user_input, user_id=None):
 - 중반 이후: 형식적 질문은 지양하고, 친구와 수다 떠는 느낌 유지.
 - 우울감/스트레스 등 민감 주제가 나오면 1~2회 질문 후 일상으로 전환했다가 다시 감정 질문 반복.
 - “그럼 그때 어떤 생각함?”, “헐 그때 기분은 어땠음?”처럼 자연스럽게 이어간다.
-"""},
+"""}, 
                 {"role": "user", "content": user_input}
             ]
         )
@@ -135,7 +137,7 @@ def classify_and_respond(user_input, user_id=None):
         if phq_extra:
             reply += f"\n\n{phq_extra}"
 
-        # DB 기록
+        # ✅ DB 기록
         with current_app.app_context():
             db.session.add(ChatLog(user_id=user_id, role="user", message=user_input))
             db.session.add(ChatLog(user_id=user_id, role="assistant", message=reply))
