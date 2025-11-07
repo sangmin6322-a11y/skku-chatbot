@@ -146,7 +146,7 @@
     <p>끼리(봇) 마스코트 선택 👇</p>
     <form method="POST">
       <div class="grid">
-        {% set emojis = ["🐰","🦊","🐻","🐱","🐶","🐹","🐼","🐧"] %}
+        {% set emojis = ["🎀","🎉","🌟","🧢","👒","🕶","🌿","🎵"] %}
         {% for m in mascots %}
         <div class="option {% if current_user.mascot == m %}selected{% endif %}">
           <img src="{{ url_for('static', filename='mascot/' + m) }}" alt="{{ m }}">
