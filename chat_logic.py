@@ -41,7 +41,7 @@ negative_words = ["힘들", "피곤", "우울", "지쳤", "짜증", "불안", "�
 
 def get_phq_probability(user_input):
     """사용자 문장에 따라 PHQ 질문 확률 가중치 계산"""
-    prob = 0.25  # 기본 확률 25%
+    prob = 0.15  # 기본 확률 25%
     if any(w in user_input for w in negative_words):
         prob += 0.4
     elif any(w in user_input for w in positive_words):
