@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>🎨 끼리 꾸미기</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #b9e9ff, #e3f4ff);
+      font-family: "Noto Sans KR", sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 0;
+    }
+
+    h2 {
+      margin-top: 40px;
+      color: #444;
+    }
+
+    .mascot-container {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 25px;
+      margin-top: 40px;
+      padding-bottom: 40px;
+    }
+
+    .mascot-card {
+      width: 130px;
+      border-radius: 20px;
+      background: #ffffff;
+      padding: 15px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
+    }
+
+    .mascot-card:hover {
+      transform: scale(1.07);
+      box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+    }
+
+    img {
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      object-fit: cover;
+    }
+
+    button {
+      margin-top: 12px;
+      background: none;
+      border: none;
+      font-size: 1.8em;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    button:hover {
+      transform: scale(1.2);
+    }
+
+    .back-link {
+      display: inline-block;
+      margin-top: 30px;
+      text-decoration: none;
+      color: #333;
+      background: #b3e5fc;
+      padding: 10px 20px;
+      border-radius: 12px;
+      font-weight: bold;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      transition: 0.2s;
+    }
+
+    .back-link:hover {
+      background: #89c9f5;
+      color: white;
+    }
+
+    .selected {
+      border: 3px solid #58aafc;
+      background: #e9f6ff;
+    }
+  </style>
+</head>
+<body>
+  <h2>🎀 끼리의 옷을 골라줘!</h2>
+
+  <form method="POST">
+    <div class="mascot-container">
+      {% set emojis = ["🐰","🦊","🐻","🐱","🐶","🐹","🐼","🐧"] %}
+      {% for m in mascots %}
+      <div class="mascot-card {% if current_user.mascot == m %}selected{% endif %}">
+        <img src="{{ url_for('static', filename='mascot/' + m) }}" alt="{{ m }}">
+        <button type="submit" name="mascot" value="{{ m }}">{{ emojis[loop.index0] }}</button>
+      </div>
+      {% endfor %}
+    </div>
+  </form>
+
+  <a href="{{ url_for('chat_page') }}" class="back-link">⬅ 돌아가기</a>
+</body>
+</html>

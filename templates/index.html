@@ -23,8 +23,8 @@
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      animation: fadeIn 0.6s ease-in-out;
       position: relative;
+      animation: fadeIn 0.6s ease-in-out;
     }
 
     @keyframes fadeIn {
@@ -49,12 +49,14 @@
       gap: 10px;
     }
 
-    #header-left img {
+    #mascot-img {
       width: 32px;
       height: 32px;
       border-radius: 50%;
       box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      transition: opacity 0.4s ease;
     }
+    #mascot-img.fade-out { opacity: 0; }
 
     #header-right {
       display: flex;
@@ -166,11 +168,12 @@
       z-index: 10;
     }
 
-    #tab-buttons {
-      display: flex;
-      justify-content: center;
-      gap: 8px;
-      margin-bottom: 10px;
+    #overlay {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.3);
+      display: none; z-index: 5;
     }
 
     .tab-btn {
@@ -181,19 +184,20 @@
       cursor: pointer;
       font-weight: 600;
       transition: 0.2s;
+      margin: 0 4px;
     }
     .tab-btn.active { background: #58aafc; color: white; }
 
     .tab-content { display: none; }
     .tab-content.active { display: block; }
 
-    /* 🧸 아바타/마스코트 이미지 그리드 */
-    #avatars, #mascots {
+    #mascots {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
       justify-items: center;
       align-items: center;
+      margin-top: 10px;
     }
 
     .avatar-option {
@@ -207,15 +211,8 @@
       transition: 0.2s;
       background-color: #f8fbff;
     }
-    .avatar-option:hover {
-      border: 2px solid #58aafc;
-      background-color: #eaf6ff;
-    }
-
-    .avatar-option.selected {
-      border: 3px solid #58aafc;
-      background-color: #e3f3ff;
-    }
+    .avatar-option:hover { border: 2px solid #58aafc; background-color: #eaf6ff; }
+    .avatar-option.selected { border: 3px solid #58aafc; background-color: #e3f3ff; }
 
     .close-btn {
       margin-top: 15px;
@@ -227,21 +224,15 @@
       transition: 0.2s;
     }
     .close-btn:hover { background: #3d91e0; }
-
-    #overlay {
-      position: absolute;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      background: rgba(0,0,0,0.3);
-      display: none; z-index: 5;
-    }
   </style>
 </head>
 <body>
   <div id="chatbox">
     <div id="header">
       <div id="header-left">
-        <img id="mascot-img" src="{{ url_for('static', filename='mascot.png') }}" alt="끼리" />
+        <img id="mascot-img" 
+             src="{{ url_for('static', filename='mascot/' + (session.get('mascot') or current_user.mascot or 'mascot00.png')) }}" 
+             alt="끼리" />
         <span>끼리 챗봇 💬</span>
       </div>
       <div id="header-right">
@@ -264,27 +255,18 @@
 
     <div id="overlay"></div>
     <div id="settings-panel">
-      <h3>꾸미기 🎨</h3>
+      <h3>끼리 꾸미기 🎨</h3>
       <div id="tab-buttons">
-        <button class="tab-btn active" onclick="switchTab('avatar')">아바타</button>
-        <button class="tab-btn" onclick="switchTab('mascot')">마스코트</button>
+        <button class="tab-btn active" onclick="switchTab('mascot')">마스코트</button>
       </div>
 
-      <div id="avatar-tab" class="tab-content active">
-        <p>내 프로필 아바타 선택 👤</p>
-        <div id="avatars">
-          <img src="{{ url_for('static', filename='avatars/ava1.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava1.png', event)">
-          <img src="{{ url_for('static', filename='avatars/ava2.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava2.png', event)">
-          <img src="{{ url_for('static', filename='avatars/ava3.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava3.png', event)">
-          <img src="{{ url_for('static', filename='avatars/ava4.png') }}" class="avatar-option" onclick="selectAvatar('avatars/ava4.png', event)">
-        </div>
-      </div>
-
-      <div id="mascot-tab" class="tab-content">
+      <div id="mascot-tab" class="tab-content active">
         <p>끼리(봇) 마스코트 선택 🤖</p>
         <div id="mascots">
           {% for i in range(8) %}
-            <img src="{{ url_for('static', filename='mascot0' ~ i ~ '.png') }}" class="avatar-option" onclick="selectMascot('mascot0{{ i }}.png', event)">
+          <img src="{{ url_for('static', filename='mascot0' ~ i ~ '.png') }}" 
+               class="avatar-option"
+               onclick="selectMascot('mascot0{{ i }}.png', event)">
           {% endfor %}
         </div>
       </div>
@@ -300,53 +282,93 @@
     const sendBtn = document.getElementById("send-btn");
     const imageInput = document.getElementById("image-input");
 
-    let userAvatar = localStorage.getItem("userAvatar") || "https://cdn-icons-png.flaticon.com/512/847/847969.png";
-    let mascotImg = localStorage.getItem("kirriMascot") || "{{ url_for('static', filename='mascot.png') }}";
+    let mascotImg = localStorage.getItem("kirriMascot") || "{{ url_for('static', filename='mascot/' + (session.get('mascot') or current_user.mascot or 'mascot00.png')) }}";
 
-    // 메시지 추가
-    function appendMessage(role, text, imageUrl = null) {
+    function appendMessage(role, text) {
       const msgDiv = document.createElement("div");
       msgDiv.classList.add("message", role);
       const profileImg = document.createElement("img");
       profileImg.classList.add("profile");
-      profileImg.src = (role === "bot") ? mascotImg : userAvatar;
+      profileImg.src = (role === "bot") ? mascotImg : "https://cdn-icons-png.flaticon.com/512/847/847969.png";
       const bubble = document.createElement("div");
       bubble.classList.add("bubble");
       bubble.textContent = text;
       msgDiv.append(profileImg, bubble);
-      if (imageUrl) {
-        const img = document.createElement("img");
-        img.src = imageUrl;
-        img.style.maxWidth = "200px";
-        img.style.borderRadius = "10px";
-        img.style.marginTop = "8px";
-        bubble.appendChild(img);
-      }
       messagesDiv.appendChild(msgDiv);
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-    function loadChatFromLocal() {
-      const saved = JSON.parse(localStorage.getItem("kirriChatHistory") || "[]");
-      if (saved.length > 0) saved.forEach(m => appendMessage(m.role, m.text));
-      else if (chatHistory.length === 0)
-        appendMessage("bot", "안녕~ 난 끼리야 💬 오늘 하루 어땠어?");
+    function loadChat() {
+      if (chatHistory.length > 0) {
+        chatHistory.forEach(m => appendMessage(m.role, m.message));
+      } else appendMessage("bot", "안녕! 난 끼리야 💬 오늘 하루 어땠어?");
+    }
+    loadChat();
+
+    sendBtn.addEventListener("click", sendMessage);
+    input.addEventListener("keypress", e => { if (e.key === "Enter") sendMessage(); });
+
+    function sendMessage() {
+      const text = input.value.trim();
+      if (!text) return;
+      appendMessage("user", text);
+      input.value = "";
+      const formData = new FormData();
+      formData.append("message", text);
+      fetch("/chat", { method: "POST", body: formData })
+        .then(res => res.json())
+        .then(data => appendMessage("bot", data.response));
     }
 
-    function saveChatToLocal() {
-      const messages = [];
-      document.querySelectorAll("#messages .message").forEach(msg => {
-        const role = msg.classList.contains("user") ? "user" : "bot";
-        const bubble = msg.querySelector(".bubble");
-        if (bubble) messages.push({ role, text: bubble.textContent });
-      });
-      localStorage.setItem("kirriChatHistory", JSON.stringify(messages));
+    async function resetChat() {
+      if (confirm("정말 채팅을 새로 시작할까요?")) {
+        await fetch("/reset", { method: "POST", credentials: "include" });
+        location.reload();
+      }
     }
 
+    const settingsPanel = document.getElementById("settings-panel");
+    const overlay = document.getElementById("overlay");
+
+    function openSettings() { settingsPanel.style.display = "block"; overlay.style.display = "block"; }
+    function closeSettings() { settingsPanel.style.display = "none"; overlay.style.display = "none"; }
+
+    function switchTab(tab) {
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+      document.querySelector(`.tab-btn[onclick*='${tab}']`).classList.add("active");
+      document.getElementById(`${tab}-tab`).classList.add("active");
+    }
+
+    function selectMascot(file, e) {
+      document.querySelectorAll("#mascots img").forEach(i => i.classList.remove("selected"));
+      e.target.classList.add("selected");
+
+      const img = document.getElementById("mascot-img");
+      img.classList.add("fade-out");
+
+      setTimeout(async () => {
+        const fullPath = `/static/${file}`;
+        mascotImg = fullPath;
+        localStorage.setItem("kirriMascot", fullPath);
+        img.src = fullPath;
+        img.classList.remove("fade-out");
+
+        // ✅ 서버 반영
+        try {
+          const formData = new FormData();
+          formData.append("mascot", file);
+          await fetch("/customize", { method: "POST", body: formData, credentials: "include" });
+        } catch (err) {
+          console.error("마스코트 서버 저장 실패:", err);
+        }
+      }, 300);
+    }
+
+    // 시계 & 날씨
     function updateTime() {
       const now = new Date();
-      const options = { hour: '2-digit', minute: '2-digit', hour12: true };
-      document.getElementById("datetime").textContent = "⏰ " + now.toLocaleTimeString('ko-KR', options);
+      document.getElementById("datetime").textContent = "⏰ " + now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
     }
     setInterval(updateTime, 1000); updateTime();
 
@@ -358,92 +380,12 @@
         if (text.includes("맑음") || text.includes("Sunny")) emoji = "☀️";
         else if (text.includes("비") || text.includes("Rain")) emoji = "🌧";
         else if (text.includes("눈") || text.includes("Snow")) emoji = "❄️";
-        else if (text.includes("흐림") || text.includes("Cloud")) emoji = "☁️";
         document.getElementById("weather").textContent = emoji + " " + text;
       } catch {
-        document.getElementById("weather").textContent = "☁️ 날씨 불러오기 실패";
+        document.getElementById("weather").textContent = "☁️ 날씨 오류";
       }
     }
     updateWeather();
-
-    loadChatFromLocal();
-    sendBtn.addEventListener("click", sendMessage);
-    input.addEventListener("keypress", e => { if (e.key === "Enter") sendMessage(); });
-    window.addEventListener("beforeunload", saveChatToLocal);
-
-    function sendMessage() {
-      const text = input.value.trim();
-      if (!text) return;
-      appendMessage("user", text);
-      input.value = "";
-      const formData = new FormData();
-      formData.append("message", text);
-      fetch("/chat", { method: "POST", body: formData })
-        .then(res => res.json())
-        .then(data => { appendMessage("bot", data.response); saveChatToLocal(); })
-        .catch(err => console.error(err));
-    }
-
-    imageInput.addEventListener("change", () => {
-      const file = imageInput.files[0];
-      if (!file) return;
-      const formData = new FormData();
-      formData.append("image", file);
-      appendMessage("user", "(이미지 전송)");
-      fetch("/chat", { method: "POST", body: formData })
-        .then(res => res.json())
-        .then(data => { appendMessage("bot", data.response, data.image_url || null); saveChatToLocal(); })
-        .catch(err => console.error(err));
-    });
-
-    // ✅ 완전 수정된 새로고침 함수
-    async function resetChat() {
-      if (confirm("정말 채팅을 새로 시작할까요?")) {
-        localStorage.removeItem("kirriChatHistory");
-        try {
-          const res = await fetch("/reset", {
-            method: "POST",
-            credentials: "include" // ✅ 세션 쿠키 함께 전송
-          });
-          const data = await res.json();
-          alert(data.message || "대화가 초기화되었습니다.");
-          location.reload();
-        } catch (err) {
-          alert("⚠️ 새로고침 중 오류가 발생했어요.");
-          console.error(err);
-        }
-      }
-    }
-
-    const settingsPanel = document.getElementById("settings-panel");
-    const overlay = document.getElementById("overlay");
-
-    function openSettings() { settingsPanel.style.display = "block"; overlay.style.display = "block"; }
-    function closeSettings() { settingsPanel.style.display = "none"; overlay.style.display = "none"; document.getElementById("mascot-img").src = mascotImg; }
-
-    function switchTab(tab) {
-      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-      document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
-      document.querySelector(`.tab-btn[onclick*='${tab}']`).classList.add("active");
-      document.getElementById(`${tab}-tab`).classList.add("active");
-    }
-
-    function selectAvatar(path, e) {
-      document.querySelectorAll("#avatars img").forEach(i => i.classList.remove("selected"));
-      e.target.classList.add("selected");
-      const fullPath = `/static/${path}`;
-      localStorage.setItem("userAvatar", fullPath);
-      userAvatar = fullPath;
-    }
-
-    function selectMascot(file, e) {
-      document.querySelectorAll("#mascots img").forEach(i => i.classList.remove("selected"));
-      e.target.classList.add("selected");
-      const fullPath = `/static/${file}`;
-      localStorage.setItem("kirriMascot", fullPath);
-      mascotImg = fullPath;
-      document.getElementById("mascot-img").src = fullPath;
-    }
   </script>
 </body>
 </html>

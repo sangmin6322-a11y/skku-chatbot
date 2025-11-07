@@ -4,7 +4,6 @@ from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import timedelta, datetime
 from flask_cors import CORS
-from werkzeug.utils import secure_filename
 import random, os
 import matplotlib
 matplotlib.use('Agg')
@@ -14,8 +13,6 @@ load_dotenv()
 
 # ✅ Flask 설정
 app = Flask(__name__, static_folder='static', template_folder='templates')
-
-# 🔐 세션 보안키 (공유 차단용)
 app.secret_key = os.getenv("SECRET_KEY", os.urandom(24))
 
 # ✅ 세션 & 쿠키 보안 강화
@@ -51,6 +48,7 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
     password = db.Column(db.String(150), nullable=False)
+    mascot = db.Column(db.String(50), default="mascot00.png")
 
 class ChatLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -73,7 +71,6 @@ def register():
         username = request.form["username"]
         password = request.form["password"]
 
-        # ✅ 명시적으로 해시 알고리즘 지정 (환경 불일치 방지)
         hashed_pw = generate_password_hash(password, method="pbkdf2:sha256")
 
         if User.query.filter_by(username=username).first():
@@ -98,6 +95,7 @@ def login():
         if user and check_password_hash(user.password, password):
             login_user(user, remember=True)
             session.permanent = True
+            session["mascot"] = user.mascot  # 로그인 시 마스코트 로드
             return redirect(url_for("chat_page"))
         else:
             flash("로그인 실패. 아이디나 비밀번호를 확인하세요.")
@@ -119,6 +117,21 @@ def chat_page():
     logs = ChatLog.query.filter_by(user_id=current_user.id).order_by(ChatLog.timestamp).all()
     chat_history = [{"role": log.role, "message": log.message} for log in logs]
     return render_template("index.html", username=current_user.username, history=chat_history)
+
+# ✅ 꾸미기 (마스코트 선택)
+@app.route("/customize", methods=["GET", "POST"])
+@login_required
+def customize():
+    mascot_list = [f"mascot0{i}.png" for i in range(8)]
+    if request.method == "POST":
+        selected = request.form.get("mascot")
+        if selected in mascot_list:
+            current_user.mascot = selected
+            db.session.commit()
+            session["mascot"] = selected
+            flash("프로필이 변경되었어! 🧸")
+            return redirect(url_for("chat_page"))
+    return render_template("customize.html", mascots=mascot_list)
 
 # ✅ 챗봇 로직
 from chat_logic import classify_and_respond
