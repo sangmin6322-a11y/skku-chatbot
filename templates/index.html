@@ -25,7 +25,13 @@
     #header{background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:space-between;
       padding:12px 16px;font-weight:700}
     #left{display:flex;align-items:center;gap:10px}
-    #mascot-img{width:34px;height:34px;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,.2);transition:opacity .3s}
+    #mascot-img{
+      width:34px;height:34px;border-radius:50%;
+      box-shadow:0 2px 4px rgba(0,0,0,.2);
+      transition:opacity .4s ease;
+    }
+    #mascot-img.fade-out { opacity: 0; }
+
     #header .meta{display:flex;gap:6px}
     #header .chip{font-size:12px;background:rgba(255,255,255,.25);padding:4px 8px;border-radius:8px}
     #header .actions{display:flex;gap:8px}
@@ -100,7 +106,10 @@
     let userAvatar = localStorage.getItem("userAvatar") || DEFAULT_AVATAR;
 
     // ✅ 끼리(봇) 마스코트 (서버/세션 → local fallback)
-    let botMascot = "{{ url_for('static', filename='mascot/' + (session.get('mascot') or current_user.mascot or 'mascot00.png')) }}";
+    const mascotImgEl = document.getElementById("mascot-img");
+    let botMascot = localStorage.getItem("kirriMascot") ||
+      "{{ url_for('static', filename='mascot/' + (session.get('mascot') or current_user.mascot or 'mascot00.png')) }}";
+    mascotImgEl.src = botMascot;
 
     // ===== 메시지 렌더링 =====
     function addMessage(role, text){
@@ -173,11 +182,20 @@
       }
     })();
 
-    // ===== 커스터마이즈 연동 안내 =====
-    // - 내 아바타 변경은 /customize 페이지에서 localStorage.setItem("userAvatar", "/static/avatars/ava1.png") 형태로 저장하면
-    //   여기에서 자동으로 반영됨(페이지 재진입/새로고침 시).
-    window.addEventListener("storage", (e)=>{
-      if (e.key === "userAvatar"){
+    // ✅ 마스코트 자동 업데이트 (localStorage 변경 감지)
+    window.addEventListener("storage", (e) => {
+      if (e.key === "kirriMascot") {
+        const newMascot = e.newValue;
+        if (newMascot && newMascot !== botMascot) {
+          mascotImgEl.classList.add("fade-out");
+          setTimeout(() => {
+            botMascot = newMascot;
+            mascotImgEl.src = newMascot;
+            mascotImgEl.classList.remove("fade-out");
+          }, 300);
+        }
+      }
+      if (e.key === "userAvatar") {
         userAvatar = e.newValue || DEFAULT_AVATAR;
       }
     });
