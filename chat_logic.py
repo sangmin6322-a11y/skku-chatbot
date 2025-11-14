@@ -3,101 +3,8 @@ from flask import current_app
 from openai import OpenAI
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-# =========================
-# 💭 PHQ-A 문항 정의
-# =========================
-PHQ_ITEMS = [
-    "요즘은 의욕이 좀 떨어진 느낌이야?",
-    "잠은 잘 자? 아니면 뒤척이거나 자주 깨?",
-    "요즘 입맛은 어때? 예전이랑 달라?",
-    "공부나 일할 때 집중이 잘 안 될 때가 있어?",
-    "스스로가 쓸모없다고 느낀 적 있어?",
-    "요즘 유난히 피곤하거나 기운이 없을 때가 많아?",
-    "예전엔 즐겁던 일들이 이제는 덜 즐겁게 느껴질 때가 있어?",
-    "사람 만나는 게 귀찮거나 피하고 싶을 때가 많아?",
-    "혹시 죽고 싶거나 사라지고 싶다는 생각이 든 적 있어?"
-]
-
-phq_state = {}  # user_id → {"index":int, "score":int, "done":bool}
-
-# =========================
-# 🧮 PHQ 점수화 함수
-# =========================
-def classify_phq_response(text: str) -> int:
-    t = text.lower()
-    if re.search(r"(전혀|없|괜찮|안 그래|별로 아님|거의 없|드물|잘 안)", t): return 0
-    if re.search(r"(가끔|며칠|조금|약간|때때로|간혹)", t): return 1
-    if re.search(r"(자주|종종|절반|많이|꽤|종일|하루의 절반)", t): return 2
-    if re.search(r"(매일|맨날|항상|늘|매번|하루종일|계속|매 순간)", t): return 3
-    return 1
-
-
-# =========================
-# 💬 감정 키워드 기반 확률 조절
-# =========================
-positive_words = ["좋아", "괜찮", "행복", "편해", "재밌", "신나", "기분 좋", "웃겼"]
-negative_words = ["힘들", "피곤", "우울", "지쳤", "짜증", "불안", "걱정", "귀찮", "슬퍼", "죽고 싶"]
-
-def get_phq_probability(user_input):
-    """사용자 문장에 따라 PHQ 질문 확률 가중치 계산"""
-    prob = 0.15  # 기본 확률 25%
-    if any(w in user_input for w in negative_words):
-        prob += 0.4
-    elif any(w in user_input for w in positive_words):
-        prob -= 0.15
-    return min(max(prob, 0.1), 0.8)  # 0.1~0.8 사이로 제한
-
-
-# =========================
-# 🧠 감정탐색 + 일상대화형 PHQ
-# =========================
-def maybe_insert_phq(user_input, user_id):
-    """일상 대화 중 확률적으로 PHQ 문항을 자연스럽게 삽입"""
-    ctx = phq_state.get(user_id, {"index": 0, "score": 0, "done": False})
-    if ctx["done"]:
-        return None
-
-    idx = ctx["index"]
-    if idx >= len(PHQ_ITEMS):
-        ctx["done"] = True
-        phq_state[user_id] = ctx
-        return None
-
-    # 확률 계산
-    prob = get_phq_probability(user_input)
-    if random.random() < prob:
-        q = PHQ_ITEMS[idx]
-        ctx["index"] += 1
-        phq_state[user_id] = ctx
-        prefix = random.choice([
-            "근데 말이야,", "그런 얘길 들으니까 문득 궁금해졌어.",
-            "음… 혹시 조금만 더 물어봐도 될까?", "그런데 요즘엔",
-            "그럴 때 너는 보통 어떻게 해?", "그 얘기, 조금만 더 자세히 들어보고 싶다.",
-            "혹시 그때 기분이 어땠는지도 기억나?", "그러고 보니까 비슷한 경험이 있었던 것 같아.",
-            "맞아, 나도 그런 생각 한 적 있어."
-        ])
-        return f"{prefix} {q}"
-    return None
-
-
-# =========================
-# ✨ GPT 기반 자연 대화
-# =========================
-def classify_and_respond(user_input, user_id=None):
-    # ✅ import를 함수 안으로 이동시켜 순환 참조 방지
-    from app import db, ChatLog
-
-    # 리포트 직접 요청
-    if re.search(r"(리포트|보고서|결과|점수|분석)", user_input):
-        return "리포트는 자동으로 만들어져! 상단의 ‘리포트’ 버튼을 눌러 확인해봐 😊"
-
-    # GPT로 일상 대화 생성
-    try:
-        res = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": """
+response_id_store = {}
+SYSTEM_PROMPT = """
 너는 지금부터 끼리 AI 챗봇이야. 너는 아래의 지침에 따라 사용자와 대화해야해.
 
 <지침>
@@ -174,22 +81,145 @@ def classify_and_respond(user_input, user_id=None):
 모든 대화, 질문, 표현은 이 세 단계를 자연스럽게 연결하기 위한 도구로 사용된다.
 끼리 AI는 사용자가 자신의 감정을 스스로 인식하고 말로 표현할 수 있도록 돕는 친구다.
 우울감의 존재를 ‘드러내게 만드는 것’이 아니라, ‘자연스럽게 흘러나오게 하는 것’이 끼리 AI의 본질이다.
-"""}, 
-                {"role": "user", "content": user_input}
+
+사용자 메시지: """
+
+# =========================
+# 💭 PHQ-A 문항 정의
+# =========================
+PHQ_ITEMS = [
+    "요즘은 의욕이 좀 떨어진 느낌이야?",
+    "잠은 잘 자? 아니면 뒤척이거나 자주 깨?",
+    "요즘 입맛은 어때? 예전이랑 달라?",
+    "공부나 일할 때 집중이 잘 안 될 때가 있어?",
+    "스스로가 쓸모없다고 느낀 적 있어?",
+    "요즘 유난히 피곤하거나 기운이 없을 때가 많아?",
+    "예전엔 즐겁던 일들이 이제는 덜 즐겁게 느껴질 때가 있어?",
+    "사람 만나는 게 귀찮거나 피하고 싶을 때가 많아?",
+    "혹시 죽고 싶거나 사라지고 싶다는 생각이 든 적 있어?",
+]
+
+phq_state = {}  # user_id → {"index":int, "score":int, "done":bool}
+
+
+# =========================
+# 🧮 PHQ 점수화 함수
+# =========================
+def classify_phq_response(text: str) -> int:
+    t = text.lower()
+    if re.search(r"(전혀|없|괜찮|안 그래|별로 아님|거의 없|드물|잘 안)", t):
+        return 0
+    if re.search(r"(가끔|며칠|조금|약간|때때로|간혹)", t):
+        return 1
+    if re.search(r"(자주|종종|절반|많이|꽤|종일|하루의 절반)", t):
+        return 2
+    if re.search(r"(매일|맨날|항상|늘|매번|하루종일|계속|매 순간)", t):
+        return 3
+    return 1
+
+
+# =========================
+# 💬 감정 키워드 기반 확률 조절
+# =========================
+positive_words = ["좋아", "괜찮", "행복", "편해", "재밌", "신나", "기분 좋", "웃겼"]
+negative_words = [
+    "힘들",
+    "피곤",
+    "우울",
+    "지쳤",
+    "짜증",
+    "불안",
+    "걱정",
+    "귀찮",
+    "슬퍼",
+    "죽고 싶",
+]
+
+
+def get_phq_probability(user_input):
+    """사용자 문장에 따라 PHQ 질문 확률 가중치 계산"""
+    prob = 0.15  # 기본 확률 25%
+    if any(w in user_input for w in negative_words):
+        prob += 0.4
+    elif any(w in user_input for w in positive_words):
+        prob -= 0.15
+    return min(max(prob, 0.1), 0.8)  # 0.1~0.8 사이로 제한
+
+
+# =========================
+# 🧠 감정탐색 + 일상대화형 PHQ
+# =========================
+def maybe_insert_phq(user_input, user_id):
+    """일상 대화 중 확률적으로 PHQ 문항을 자연스럽게 삽입"""
+    ctx = phq_state.get(user_id, {"index": 0, "score": 0, "done": False})
+    if ctx["done"]:
+        return None
+
+    idx = ctx["index"]
+    if idx >= len(PHQ_ITEMS):
+        ctx["done"] = True
+        phq_state[user_id] = ctx
+        return None
+
+    # 확률 계산
+    prob = get_phq_probability(user_input)
+    if random.random() < prob:
+        q = PHQ_ITEMS[idx]
+        ctx["index"] += 1
+        phq_state[user_id] = ctx
+        prefix = random.choice(
+            [
+                "근데 말이야,",
+                "그런 얘길 들으니까 문득 궁금해졌어.",
+                "음… 혹시 조금만 더 물어봐도 될까?",
+                "그런데 요즘엔",
+                "그럴 때 너는 보통 어떻게 해?",
+                "그 얘기, 조금만 더 자세히 들어보고 싶다.",
+                "혹시 그때 기분이 어땠는지도 기억나?",
+                "그러고 보니까 비슷한 경험이 있었던 것 같아.",
+                "맞아, 나도 그런 생각 한 적 있어.",
             ]
         )
-        reply = res.choices[0].message.content.strip()
+        return f"{prefix} {q}"
+    return None
+
+
+# =========================
+# ✨ GPT 기반 자연 대화
+# =========================
+def classify_and_respond(user_input, user_id=None):
+    # ✅ import를 함수 안으로 이동시켜 순환 참조 방지
+    from app import db, ChatLog
+
+    # 리포트 직접 요청
+    if re.search(r"(리포트|보고서|결과|점수|분석)", user_input):
+        return "리포트는 자동으로 만들어져! 상단의 ‘리포트’ 버튼을 눌러 확인해봐 😊"
+
+    # GPT로 일상 대화 생성
+    try:
+        previous_id = response_id_store.get(user_id)
+
+        if previous_id is None:
+            first_message = SYSTEM_PROMPT + user_input
+
+            response_request_params = {
+                "model": "gpt-4o-mini",
+                "input": [{"role": "user", "content": first_message}],
+            }
+        else:
+            response_request_params = {
+                "model": "gpt-4o-mini",
+                "input": [{"role": "user", "content": user_input}],
+                "previous_response_id": previous_id,
+            }
+        res = client.responses.create(**response_request_params)
+        response_id_store[user_id] = res.id
+        reply = res.output_text.strip()
 
         # ✅ PHQ 문항 확률 삽입
         phq_extra = maybe_insert_phq(user_input, user_id)
         if phq_extra:
             reply += f"\n\n{phq_extra}"
-
-        # ✅ DB 기록
-        with current_app.app_context():
-            db.session.add(ChatLog(user_id=user_id, role="user", message=user_input))
-            db.session.add(ChatLog(user_id=user_id, role="assistant", message=reply))
-            db.session.commit()
 
         return reply
 
