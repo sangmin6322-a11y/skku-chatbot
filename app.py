@@ -21,17 +21,21 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import timedelta, datetime
 from flask_cors import CORS
 import random, os
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+import matplotlib.image as mpimg
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# ------------------------------------------------------
-# Flask 기본 설정
-# ------------------------------------------------------
+# Flask 설정
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.secret_key = os.getenv("SECRET_KEY", os.urandom(24))
 
-# Secure Session Settings
+# 세션 & 쿠키 보안 강화
 app.config.update(
     SESSION_COOKIE_SAMESITE="None",
     SESSION_COOKIE_SECURE=True,
@@ -42,7 +46,7 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(hours=1),
 )
 
-# CORS
+# CORS 설정
 CORS(
     app,
     resources={
@@ -56,26 +60,19 @@ CORS(
     supports_credentials=True,
 )
 
-# ------------------------------------------------------
-# DB
-# ------------------------------------------------------
+# DB 설정
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///users.db")
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
-
-# ------------------------------------------------------
-# 로그인 시스템
-# ------------------------------------------------------
+# Flask-Login
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
 
-# ------------------------------------------------------
 # 모델 정의
-# ------------------------------------------------------
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
@@ -100,54 +97,46 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 
-# ------------------------------------------------------
 # 회원가입
-# ------------------------------------------------------
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
         username = request.form["username"]
         password = request.form["password"]
 
+        hashed_pw = generate_password_hash(password, method="pbkdf2:sha256")
+
         if User.query.filter_by(username=username).first():
             flash("이미 존재하는 아이디입니다.")
             return redirect(url_for("register"))
 
-        hashed_pw = generate_password_hash(password, method="pbkdf2:sha256")
-        user = User(username=username, password=hashed_pw)
-
-        db.session.add(user)
+        new_user = User(username=username, password=hashed_pw)
+        db.session.add(new_user)
         db.session.commit()
-
-        flash("회원가입 성공!")
+        flash("회원가입 성공! 로그인 해주세요.")
         return redirect(url_for("login"))
-
     return render_template("register.html")
 
 
-# ------------------------------------------------------
 # 로그인
-# ------------------------------------------------------
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         username = request.form["username"]
         password = request.form["password"]
-
         user = User.query.filter_by(username=username).first()
+
         if user and check_password_hash(user.password, password):
             login_user(user, remember=True)
-            session["mascot"] = user.mascot
+            session.permanent = True
+            session["mascot"] = user.mascot  # 로그인 시 마스코트 로드
             return redirect(url_for("chat_page"))
-
-        flash("로그인 실패!")
-
+        else:
+            flash("로그인 실패. 아이디나 비밀번호를 확인하세요.")
     return render_template("login.html")
 
 
-# ------------------------------------------------------
 # 로그아웃
-# ------------------------------------------------------
 @app.route("/logout")
 @login_required
 def logout():
@@ -157,9 +146,7 @@ def logout():
     return redirect(url_for("login"))
 
 
-# ------------------------------------------------------
 # 채팅 페이지
-# ------------------------------------------------------
 @app.route("/")
 @login_required
 def chat_page():
@@ -168,52 +155,64 @@ def chat_page():
         .order_by(ChatLog.timestamp)
         .all()
     )
-    history = [{"role": log.role, "message": log.message} for log in logs]
-    return render_template("index.html", username=current_user.username, history=history)
-
-
-# ------------------------------------------------------
-# 마스코트 커스터마이징
-# ------------------------------------------------------
-@app.route("/customize", methods=["GET", "POST"])
-@login_required
-def customize():
-
-    all_mascots = [f"mascot{i:02d}.png" for i in range(20)]
-
-    acc_emojis = [
-        "🎀", "🎉", "🌟", "🧢", "👒", "🕶", "🌿", "🎵",
-        "👽", "✨", "👾", "🧣", "📕", "🥖", "🛟"
-    ]
-    clothes_emojis = ["🧥", "🧑🏻‍🎄", "💩", "👩", "👨"]
-
-    acc_files = [f"mascot{i:02d}.png" for i in range(15)]
-    clothes_files = [f"mascot{i:02d}.png" for i in range(15, 20)]
-
-    acc_data = list(zip(acc_files, acc_emojis))
-    clothes_data = list(zip(clothes_files, clothes_emojis))
-
-    if request.method == "POST":
-        selected = request.form.get("mascot")
-
-        if selected in all_mascots:
-            current_user.mascot = selected
-            session["mascot"] = selected
-            db.session.commit()
-            return jsonify({"success": True})
-
-        return jsonify({"success": False}), 400
-
+    chat_history = [{"role": log.role, "message": log.message} for log in logs]
     return render_template(
-        "customize.html",
-        acc_data=acc_data,
-        clothes_data=clothes_data,
+        "index.html", username=current_user.username, history=chat_history
     )
 
 
-# ------------------------------------------------------
+# --- [수정됨] 꾸미기 (마스코트 선택) ---
+@app.route("/customize", methods=["GET", "POST"])
+@login_required
+def customize():
+    # --- 1. [수정] 전체 마스코트 리스트 정의 (00 ~ 19) ---
+    all_mascots = [f"mascot{i:02d}.png" for i in range(20)] 
+
+    
+    # acc: 00 ~ 14 (15개)
+    acc_emojis = [
+        "🎀", "🎉", "🌟", "🧢", "👒", "🕶", "🌿", "🎵", 
+        "👽", "✨", "👾", "🧣", "📕", "🥖", "🛟"
+    ]
+    # clothes: 15 ~ 19 (5개)
+    clothes_emojis = ["🧥", "🧑🏻‍🎄", "💩", "👩","👨"]
+
+
+    # --- 3. [수정] 파일명 리스트 생성 ---
+    acc_list = [f"mascot{i:02d}.png" for i in range(15)] # 0~14
+    clothes_list = [f"mascot{i:02d}.png" for i in range(15, 20)]
+
+
+    # --- 4. [수정] 파일명과 이모지를 짝지어 템플릿으로 전달 ---
+    acc_data = list(zip(acc_list, acc_emojis))
+    clothes_data = list(zip(clothes_list, clothes_emojis))
+
+
+    if request.method == "POST":
+        # --- "저장하기" (Fetch) 요청을 처리 ---
+        selected = request.form.get("mascot")
+        
+        # all_mascots가 range(21)로 수정되었으므로 이 로직은 그대로 작동합니다.
+        if selected in all_mascots:
+            current_user.mascot = selected
+            db.session.commit()
+            session["mascot"] = selected
+            
+            # fetch 요청에 성공 응답(JSON)을 보냄
+            return jsonify({"success": True, "message": "저장 완료!"})
+        
+        return jsonify({"success": False, "message": "잘못된 파일입니다."}), 400
+
+    # --- 5. [수정] GET 요청 시 (페이지 첫 로드) ---
+    # 템플릿에 짝지어진 (파일+이모지) 데이터 리스트 2개 전달
+    return render_template(
+        "customize.html",
+        acc_data=acc_data,
+        clothes_data=clothes_data)
+
+
 # 챗봇 로직
-# ------------------------------------------------------
+# (chat_logic.py 파일이 별도로 존재한다고 가정)
 from chat_logic import classify_and_respond
 
 
@@ -221,113 +220,244 @@ from chat_logic import classify_and_respond
 @login_required
 def chat():
     user_id = current_user.id
-    text = request.form.get("message")
+    message = request.form.get("message")
 
-    reply = classify_and_respond(text, user_id)
+    # Import here to avoid circular imports
+    from chat_logic import classify_and_respond
 
-    db.session.add(ChatLog(user_id=user_id, role="user", message=text))
-    db.session.add(ChatLog(user_id=user_id, role="bot", message=reply))
+    bot_reply = classify_and_respond(message, user_id)
+
+    # Use current app context
+    db.session.add(ChatLog(user_id=user_id, role="user", message=message))
+    db.session.add(ChatLog(user_id=user_id, role="bot", message=bot_reply))
     db.session.commit()
 
-    return jsonify({"response": reply})
+    return jsonify({"response": bot_reply})
 
 
-# ------------------------------------------------------
-# 새로고침(대화 기록 삭제)
-# ------------------------------------------------------
+# 새로고침(대화 초기화)
 @app.route("/reset", methods=["POST"])
 @login_required
 def reset_chat():
     ChatLog.query.filter_by(user_id=current_user.id).delete()
     db.session.commit()
-    return jsonify({"message": "초기화 완료"})
+    return jsonify({"message": "Chat history cleared."})
 
 
-# ------------------------------------------------------
-# 📊 Chart.js 기반 감정 분석 (matplotlib 제거됨)
-# ------------------------------------------------------
+# --- 이모티콘 경로 매핑 ---
+# 5개의 이모티콘 이미지는 'static/images/' 폴더 안에 있어야 합니다.
+IMAGE_DIR = os.path.join("static", "result")
+EMOTION_IMAGES = {
+    "정상": os.path.join(IMAGE_DIR, "환하게 웃는 끼리.png"),
+    "경미한 저하": os.path.join(IMAGE_DIR, "미소짓는 끼리.png"),
+    "약한 우울": os.path.join(IMAGE_DIR, "보통끼리.png"),
+    "중등도 우울": os.path.join(IMAGE_DIR, "살짞 슬픈끼리.png"),
+    "심한 우울": os.path.join(IMAGE_DIR, "우울한끼리.png"),
+    "중증 우울": os.path.join(IMAGE_DIR, "초고도심각 끼리.png"),
+}
+
+
+def get_emotion_image_path(score):
+    if score == 0:
+        return EMOTION_IMAGES["정상"]
+    elif 1 <= score <= 4:
+        return EMOTION_IMAGES["경미한 저하"]
+    elif 5 <= score <= 9:
+        return EMOTION_IMAGES["약한 우울"]
+    elif 10 <= score <= 14:
+        return EMOTION_IMAGES["중등도 우울"]
+    elif 15 <= score <= 19:
+        return EMOTION_IMAGES["심한 우울"]
+    else:
+        return EMOTION_IMAGES["중증 우울"]
+
+
+# --- 감정 분석 및 리포트 생성 함수 (Y축 숨기기 적용) ---
 def generate_emotion_report(user_id):
+# UTC에 9시간 더해서 한국 시간으로 변환
     kst_offset = timedelta(hours=9)
     now_kst = datetime.utcnow() + kst_offset
-
-    logs = ChatLog.query.filter(
-        ChatLog.user_id == user_id,
-        ChatLog.role == "user",
-        ChatLog.timestamp >= datetime.utcnow() - timedelta(days=7),
-    ).all()
+    
+    logs = (
+        ChatLog.query.filter(
+            ChatLog.user_id == user_id,
+            ChatLog.role == "user",
+            ChatLog.timestamp >= datetime.utcnow() - timedelta(days=7),
+        )
+        .order_by(ChatLog.timestamp)
+        .all()
+    )
 
     mood_keywords = [
-        "힘들", "우울", "무기력", "짜증",
-        "귀찮", "죽고 싶", "의욕없", "불안"
+        "힘들",
+        "우울",
+        "무기력",
+        "짜증",
+        "귀찮",
+        "죽고 싶",
+        "의욕없",
+        "불안",
     ]
 
+    # 최근 7일간의 모든 날짜를 포함하도록 daily_score 초기화 (한국 시간 기준)
     daily_score = {
-        (now_kst.date() - timedelta(days=i)): 0
-        for i in range(6, -1, -1)
-    }
+        (now_kst.date() - timedelta(days=i)): 0 for i in range(6, -1, -1)
+    }  # 7일 전 ~ 오늘
 
     for log in logs:
-        local_time = log.timestamp + kst_offset
-        d = local_time.date()
+        # UTC로 저장된 timestamp를 한국 시간으로 변환
+        log_time_kst = log.timestamp + kst_offset
+        date = log_time_kst.date()
+        
+        if date in daily_score:  # 7일 이내의 로그만 집계
+            score = sum(1 for kw in mood_keywords if kw in log.message)
+            daily_score[date] = daily_score.get(date, 0) + score
 
-        if d in daily_score:
-            daily_score[d] += sum(kw in log.message for kw in mood_keywords)
+    dates = sorted(daily_score.keys())
+    scores = [daily_score[d] for d in dates]
+    total_score = sum(scores)
 
-    # 날짜 / 점수 리스트
-    days_sorted = sorted(daily_score.keys())
-    dates = [d.strftime("%m/%d") for d in days_sorted]
-    scores = [daily_score[d] for d in days_sorted]
-    total = sum(scores)
-
-    # PHQ 레벨
-    if total == 0:
-        level = "정상 😊"
-        advice = "지금처럼 잘 지내자!"
-    elif 1 <= total <= 4:
-        level = "경미한 저하 😐"
-        advice = "조금 지친 것 같아. 산책 어떨까?"
-    elif 5 <= total <= 9:
-        level = "약한 우울 😔"
-        advice = "기분이 좀 가라앉아 보여. 생활 리듬을 챙겨보자."
-    elif 10 <= total <= 14:
-        level = "중등도 우울 😞"
-        advice = "꽤 힘들어 보이네. 스트레칭이나 음악 추천해."
-    elif 15 <= total <= 19:
-        level = "심한 우울 😢"
-        advice = "힘이 많이 빠진 것 같아. 주변에 이야기해봐."
+    # PHQ-A 기반 해석 (이전과 동일)
+    if total_score == 0:
+        level, advice = (
+            "정상 😊",
+            "네가 한 말들을 보니 우울감이 없는 상태야. 지금처럼 잘 지내자!",
+        )
+    elif 1 <= total_score <= 4:
+        level, advice = (
+            "경미한 저하 😐",
+            "잠깐 기분이 저하된 상태일 수도 있겠다. 가벼운 산책 추천해.",
+        )
+    elif 5 <= total_score <= 9:
+        level, advice = (
+            "약한 우울 😔",
+            "약간 우울한 기분이 느껴져. 수면이나 식습관을 규칙적으로 해보자.",
+        )
+    elif 10 <= total_score <= 14:
+        level, advice = (
+            "중등도 우울 😞",
+            "꽤 우울감이 느껴지는 상태야. 음악 듣거나 스트레칭 해보자.",
+        )
+    elif 15 <= total_score <= 19:
+        level, advice = (
+            "심한 우울 😢",
+            "우울감이 심해 보여. 주변에 이야기하거나 상담 도움을 받아보자.",
+        )
     else:
-        level = "중증 우울 ⚠️"
-        advice = "정말 힘든 상태야. 꼭 주변 도움을 요청해줘."
+        level, advice = "중증 우울 ⚠️", "심한 우울감이 보여. 꼭 주변에 도움을 요청하자."
+
+    graph_filename = None
+    # 데이터가 아예 없거나(total_score == 0), 있더라도 모두 0인 경우(any(...) == False) 그래프를 그리지 않음
+    if total_score > 0 or any(d in daily_score for d, s in zip(dates, scores)):
+        try:
+            fig, ax = plt.subplots(figsize=(8, 4))
+            fig.patch.set_facecolor("white")  # Figure 배경색
+            ax.set_facecolor("#f9f9f9")  # 그래프 배경색
+
+            # 점수 연결선
+            ax.plot(
+                dates, scores, color="#2a6fb4", linestyle="-", linewidth=2, zorder=1
+            )
+
+            # 각 날짜별 이모티콘 표시
+            for i, (date, score) in enumerate(zip(dates, scores)):
+                emotion_image_path = get_emotion_image_path(score)
+
+                if not os.path.exists(emotion_image_path):
+                    print(f"Warning: Image file not found at {emotion_image_path}")
+                    continue  # 이미지 없으면 스킵
+                # Much smaller images
+                fig_width, fig_height = fig.get_size_inches()
+                num_points = len(dates)
+                dynamic_zoom = (min(fig_width, fig_height) / 130) * (
+                    7 / max(num_points, 1)
+                )  # Changed from 30 to 100
+
+                img = mpimg.imread(emotion_image_path)
+                imagebox = OffsetImage(img, zoom=dynamic_zoom)
+                ab = AnnotationBbox(
+                    imagebox,
+                    (date, score),
+                    xybox=(0, 0),
+                    xycoords="data",
+                    boxcoords="offset points",
+                    frameon=False,
+                    zorder=2,
+                )
+                ax.add_artist(ab)
+
+            # --- [수정됨] Y축 숨기기 ---
+            ax.get_yaxis().set_visible(False)
+
+            # --- [수정됨] X축 설정 (날짜만 남기기) ---
+            ax.set_xlabel("")  # X축 레이블 제거
+            ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%m/%d"))
+            plt.xticks(rotation=0, fontsize=10, color="#555555")  # X축 날짜 폰트
+            ax.tick_params(
+                axis="x", which="both", bottom=False, top=False
+            )  # X축 눈금선 제거
+
+            # --- [수정됨] Y축 관련 설정 제거 ---
+            ax.set_ylabel("")  # Y축 레이블 제거
+
+            # --- [수정됨] 그래프 테두리(spines) 모두 제거 ---
+            ax.spines["top"].set_visible(False)
+            ax.spines["right"].set_visible(False)
+            ax.spines["bottom"].set_visible(False)
+            ax.spines["left"].set_visible(False)
+
+            # --- [수정됨] 그리드 제거 ---
+            # ax.grid(True, alpha=0.3, linestyle='--') # 그리드 라인 제거
+
+            # --- [유지] Y축 범위 설정 ---
+            # Y축이 보이지 않더라도, 이모티콘이 잘리지 않도록
+            # 내부적으로 범위는 설정해 주어야 합니다.
+            min_score = min(scores) - 1
+            max_score = max(scores) + 2
+            ax.set_ylim(min_score, max_score)
+            ax.invert_yaxis()
+
+            plt.tight_layout()
+            os.makedirs("static", exist_ok=True)
+
+            graph_filename = f"mood_graph_{user_id}.png"
+            graph_full_path = os.path.join("static", graph_filename)
+            plt.savefig(graph_full_path)
+            plt.close()
+
+        except Exception as e:
+            print(f"Error generating graph: {e}")
+            graph_filename = None
 
     return {
         "username": current_user.username,
+        "score": total_score,
         "level": level,
         "advice": advice,
-        "dates": dates,
-        "scores": scores,
-        "has_logs": total > 0
+        "graph": graph_filename,
     }
 
 
-# ------------------------------------------------------
-# 리포트 페이지
-# ------------------------------------------------------
+# 감정 분석
 @app.route("/analyze")
 @login_required
 def analyze():
-    return render_template("result.html", **generate_emotion_report(current_user.id))
+    report_data = generate_emotion_report(current_user.id)
+    return render_template("result.html", **report_data)
 
 
+# 리포트
 @app.route("/report")
 @login_required
 def report():
-    return render_template("result.html", **generate_emotion_report(current_user.id))
+    report_data = generate_emotion_report(current_user.id)
+    return render_template(
+        "report.html",  # report.html 템플릿이 있다고 가정
+        **report_data,
+    )
 
 
-# ------------------------------------------------------
-# 실행
-# ------------------------------------------------------
+# 앱 실행
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-
