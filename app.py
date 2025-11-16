@@ -161,20 +161,54 @@ def chat_page():
     )
 
 
-# 꾸미기 (마스코트 선택)
+# --- [수정됨] 꾸미기 (마스코트 선택) ---
 @app.route("/customize", methods=["GET", "POST"])
 @login_required
 def customize():
-    mascot_list = [f"mascot0{i}.png" for i in range(8)]
+    # --- 1. [수정] 전체 마스코트 리스트 정의 (00 ~ 19) ---
+    all_mascots = [f"mascot{i:02d}.png" for i in range(20)] 
+
+    
+    # acc: 00 ~ 14 (15개)
+    acc_emojis = [
+        "🎀", "🎉", "🌟", "🧢", "👒", "🕶", "🌿", "🎵", 
+        "👽", "✨", "👾", "🧣", "📕", "🥖", "🛟"
+    ]
+    # clothes: 15 ~ 19 (5개)
+    clothes_emojis = ["🧥", "🧑🏻‍🎄", "💩", "👩","👨"]
+
+
+    # --- 3. [수정] 파일명 리스트 생성 ---
+    acc_list = [f"mascot{i:02d}.png" for i in range(15)] # 0~14
+    clothes_list = [f"mascot{i:02d}.png" for i in range(15, 20)]
+
+
+    # --- 4. [수정] 파일명과 이모지를 짝지어 템플릿으로 전달 ---
+    acc_data = list(zip(acc_list, acc_emojis))
+    clothes_data = list(zip(clothes_list, clothes_emojis))
+
+
     if request.method == "POST":
+        # --- "저장하기" (Fetch) 요청을 처리 ---
         selected = request.form.get("mascot")
-        if selected in mascot_list:
+        
+        # all_mascots가 range(21)로 수정되었으므로 이 로직은 그대로 작동합니다.
+        if selected in all_mascots:
             current_user.mascot = selected
             db.session.commit()
             session["mascot"] = selected
-            flash("프로필이 변경되었어! 🧸")
-            return redirect(url_for("chat_page"))
-    return render_template("customize.html", mascots=mascot_list)
+            
+            # fetch 요청에 성공 응답(JSON)을 보냄
+            return jsonify({"success": True, "message": "저장 완료!"})
+        
+        return jsonify({"success": False, "message": "잘못된 파일입니다."}), 400
+
+    # --- 5. [수정] GET 요청 시 (페이지 첫 로드) ---
+    # 템플릿에 짝지어진 (파일+이모지) 데이터 리스트 2개 전달
+    return render_template(
+        "customize.html",
+        acc_data=acc_data,
+        clothes_data=clothes_data)
 
 
 # 챗봇 로직
@@ -212,14 +246,14 @@ def reset_chat():
 
 # --- 이모티콘 경로 매핑 ---
 # 5개의 이모티콘 이미지는 'static/images/' 폴더 안에 있어야 합니다.
-IMAGE_DIR = os.path.join("static", "result끼리")
+IMAGE_DIR = os.path.join("static", "result")
 EMOTION_IMAGES = {
     "정상": os.path.join(IMAGE_DIR, "환하게 웃는 끼리.png"),
     "경미한 저하": os.path.join(IMAGE_DIR, "미소짓는 끼리.png"),
     "약한 우울": os.path.join(IMAGE_DIR, "보통끼리.png"),
     "중등도 우울": os.path.join(IMAGE_DIR, "살짞 슬픈끼리.png"),
     "심한 우울": os.path.join(IMAGE_DIR, "우울한끼리.png"),
-    "중증 우울": os.path.join(IMAGE_DIR, "우울한끼리.png"),
+    "중증 우울": os.path.join(IMAGE_DIR, "초고도심각 끼리.png"),
 }
 
 
@@ -240,6 +274,10 @@ def get_emotion_image_path(score):
 
 # --- 감정 분석 및 리포트 생성 함수 (Y축 숨기기 적용) ---
 def generate_emotion_report(user_id):
+# UTC에 9시간 더해서 한국 시간으로 변환
+    kst_offset = timedelta(hours=9)
+    now_kst = datetime.utcnow() + kst_offset
+    
     logs = (
         ChatLog.query.filter(
             ChatLog.user_id == user_id,
@@ -261,13 +299,16 @@ def generate_emotion_report(user_id):
         "불안",
     ]
 
-    # 최근 7일간의 모든 날짜를 포함하도록 daily_score 초기화
+    # 최근 7일간의 모든 날짜를 포함하도록 daily_score 초기화 (한국 시간 기준)
     daily_score = {
-        (datetime.utcnow().date() - timedelta(days=i)): 0 for i in range(6, -1, -1)
+        (now_kst.date() - timedelta(days=i)): 0 for i in range(6, -1, -1)
     }  # 7일 전 ~ 오늘
 
     for log in logs:
-        date = log.timestamp.date()
+        # UTC로 저장된 timestamp를 한국 시간으로 변환
+        log_time_kst = log.timestamp + kst_offset
+        date = log_time_kst.date()
+        
         if date in daily_score:  # 7일 이내의 로그만 집계
             score = sum(1 for kw in mood_keywords if kw in log.message)
             daily_score[date] = daily_score.get(date, 0) + score
@@ -358,7 +399,6 @@ def generate_emotion_report(user_id):
 
             # --- [수정됨] Y축 관련 설정 제거 ---
             ax.set_ylabel("")  # Y축 레이블 제거
-            ax.set_title("최근 7일 감정 변화", fontsize=14, color="#333333")
 
             # --- [수정됨] 그래프 테두리(spines) 모두 제거 ---
             ax.spines["top"].set_visible(False)

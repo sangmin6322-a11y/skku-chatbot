@@ -113,6 +113,7 @@
 
     {% if graph %}
     <div class="graph-container">
+      <h3 style="color: #333; margin-top: 0; margin-bottom: 15px; font-size: 16px;">최근 7일 감정 변화</h3>
       <img src="{{ url_for('static', filename=graph) }}" alt="감정 변화 그래프">
     </div>
     {% else %}

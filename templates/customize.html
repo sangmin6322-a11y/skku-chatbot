@@ -57,6 +57,47 @@
       transition: opacity 0.4s ease;
     }
 
+    /* --- [새 스타일] 카테고리 --- */
+    .category-group {
+      text-align: left;
+      margin-bottom: 20px;
+      padding: 10px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.5);
+    }
+    .category-title {
+      font-size: 1.1em;
+      font-weight: 600;
+      color: #333;
+      margin-left: 5px;
+      margin-bottom: 10px;
+    }
+    /* --- [기존 스타일 복원] 이모지 버튼 --- */
+    .emoji-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .emoji-btn {
+      font-size: 1.8em;
+      background: #fff;
+      border: 2px solid transparent;
+      border-radius: 10px;
+      padding: 8px 12px;
+      cursor: pointer;
+      box-shadow: var(--shadow);
+      transition: .2s;
+    }
+    .emoji-btn:hover {
+      transform: scale(1.1);
+      border-color: var(--blue);
+    }
+    .emoji-btn.selected {
+      background: #e3f3ff;
+      border: 3px solid var(--blue);
+    }
+    /* --- [스타일 끝] --- */
+
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
@@ -85,19 +126,6 @@
     }
     .option button:hover { transform: scale(1.2); }
 
-    .emoji-bar {
-      display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;
-      margin-bottom: 30px;
-    }
-    .emoji-btn {
-      font-size: 1.8em; background: #fff;
-      border: 2px solid transparent; border-radius: 10px;
-      padding: 8px 12px; cursor: pointer;
-      box-shadow: var(--shadow); transition: .2s;
-    }
-    .emoji-btn:hover { transform: scale(1.15); border-color: var(--blue); }
-    .emoji-btn.selected { background: #e3f3ff; border: 3px solid var(--blue); }
-
     .btns {
       display: flex; justify-content: center; gap: 12px; margin-top: 20px;
     }
@@ -119,10 +147,11 @@
     <button class="tab-btn" onclick="switchTab('mascot')">마스코트 🤖</button>
   </div>
 
-  <!-- ✅ 아바타 꾸미기 -->
+  <!-- ✅ 아바타 꾸미기 (기존과 동일) -->
   <div id="avatar" class="content active">
     <div class="preview">
-      <img id="avatar-preview" src="{{ url_for('static', filename='avatars/ava1.jpg') }}" alt="아바타">
+      <img id="avatar-preview" src="{{ url_for('static', filename='avatars/ava1.png') }}" alt="아바타"
+           onerror="this.src='https://placehold.co/200x200/fff/9ca3af?text=Avatar';">
     </div>
     <p>내 프로필 아바타를 골라봐 👇</p>
     <div class="grid">
@@ -130,7 +159,8 @@
       {% set emojis = ["😀","😎","🧸","🧑‍🎓"] %}
       {% for a in avas %}
       <div class="option">
-        <img src="{{ url_for('static', filename='avatars/' + a) }}" alt="{{ a }}">
+        <img src="{{ url_for('static', filename='avatars/' + a) }}" alt="{{ a }}"
+             onerror="this.src='https://placehold.co/90x90/f3f4f6/9ca3af?text=Img';">
         <button onclick="selectAvatar('{{ url_for('static', filename='avatars/' + a) }}', this)">
           {{ emojis[loop.index0] }}
         </button>
@@ -139,32 +169,59 @@
     </div>
   </div>
 
-  <!-- ✅ 마스코트 꾸미기 -->
+  <!-- ✅ 마스코트 꾸미기 ([수정됨]) -->
   <div id="mascot" class="content">
     <div class="preview">
-      <img id="kirri-preview" src="{{ url_for('static', filename='mascot/' + (current_user.mascot or 'mascot00.png')) }}" alt="끼리">
+      <img id="kirri-preview" 
+           src="{{ url_for('static', filename='mascot/' + (current_user.mascot or 'mascot00.png')) }}" 
+           alt="끼리"
+           onerror="this.src='https://placehold.co/200x200/fff/3b82f6?text=KKIRI';">
     </div>
     <p>끼리의 옷을 골라줘 💕</p>
-    <div class="emoji-bar">
-      {% set emojis = ["🎀","🎉","🌟","🧢","👒","🕶","🌿","🎵"] %}
-      {% for i in range(8) %}
-        <button class="emoji-btn {% if current_user.mascot == ('mascot0' ~ i ~ '.png') %}selected{% endif %}"
-                onclick="selectOutfit('mascot0{{ i }}.png', this)">
-          {{ emojis[i] }}
-        </button>
-      {% endfor %}
+
+    <!-- [수정됨] 2단 카테고리 UI (이모지 버전) -->
+    <div class="categories-container" style="max-width: 400px; margin: 0 auto;">
+      
+      <!-- 카테고리 1: acc -->
+      <div class="category-group">
+        <div class="category-title">acc</div>
+        <div class="emoji-bar">
+          {% for mascot_file, emoji in acc_data %}
+            <button class="emoji-btn {% if current_user.mascot == mascot_file %}selected{% endif %}"
+                    onclick="selectOutfit('{{ mascot_file }}', this)">
+              {{ emoji }}
+            </button>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- [수정됨] 카테고리 2: clothes (object 카테고리 삭제) -->
+      <div class="category-group">
+        <div class="category-title">clothes</div>
+        <div class="emoji-bar">
+          {% for mascot_file, emoji in clothes_data %}
+            <button class="emoji-btn {% if current_user.mascot == mascot_file %}selected{% endif %}"
+                    onclick="selectOutfit('{{ mascot_file }}', this)">
+              {{ emoji }}
+            </button>
+          {% endfor %}
+        </div>
+      </div>
+      
     </div>
+    <!-- [수정 끝] -->
+
     <div class="btns">
       <form id="saveForm" method="POST" style="display:inline;">
-        <input type="hidden" name="mascot" id="selectedMascot">
-        <button type="submit" class="action">저장하기 💾</button>
+        <input type="hidden" name="mascot" id="selectedMascot" value="{{ current_user.mascot or 'mascot00.png' }}">
+        <button type="submit" class.action="action">저장하기 💾</button>
       </form>
       <button class="action" onclick="location.href='/'">돌아가기 ⬅</button>
     </div>
   </div>
 
   <script>
-    // ✅ 탭 전환
+    // ✅ 탭 전환 (기존과 동일)
     function switchTab(tab) {
       document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
       document.querySelectorAll(".content").forEach(c=>c.classList.remove("active"));
@@ -172,7 +229,7 @@
       document.getElementById(tab).classList.add("active");
     }
 
-    // ✅ 아바타 선택
+    // ✅ 아바타 선택 (기존과 동일)
     const avatarPreview = document.getElementById("avatar-preview");
     function selectAvatar(path, el){
       localStorage.setItem("userAvatar", path);
@@ -182,8 +239,15 @@
       el.parentElement.classList.add("selected");
       alert("내 아바타가 바뀌었어! 🎨 채팅창에도 적용돼!");
     }
+     // 페이지 로드 시 localStorage에서 아바타 로드
+    document.addEventListener('DOMContentLoaded', () => {
+        const savedAvatar = localStorage.getItem("userAvatar");
+        if(savedAvatar) {
+            avatarPreview.src = savedAvatar;
+        }
+    });
 
-    // ✅ 마스코트 선택
+    // ✅ 마스코트 선택 (기존과 동일, 버튼 클래스 .emoji-btn)
     const preview = document.getElementById("kirri-preview");
     const hiddenInput = document.getElementById("selectedMascot");
     const buttons = document.querySelectorAll(".emoji-btn");
@@ -196,22 +260,40 @@
       hiddenInput.value = file;
       preview.style.opacity = 0;
       setTimeout(()=>{
-        preview.src = `/static/mascot/${file}`;
+        // [수정] 경로에 /mascot/ 추가
+        preview.src = `{{ url_for('static', filename='mascot/') }}${file}`;
         preview.style.opacity = 1;
       }, 300);
     }
 
-    // ✅ 저장 (서버 + localStorage)
+    // ✅ 저장 (서버 + localStorage) ([수정됨], fetch 응답 처리)
     document.getElementById("saveForm").addEventListener("submit", (e)=>{
       e.preventDefault();
       const file = hiddenInput.value || selectedFile;
       if (!file) return alert("먼저 옷을 골라줘!");
-      localStorage.setItem("kirriMascot", `/static/mascot/${file}`);
+      
+      // [수정] 경로에 /mascot/ 추가
+      localStorage.setItem("kirriMascot", `{{ url_for('static', filename='mascot/') }}${file}`);
+      
       const formData = new FormData();
       formData.append("mascot", file);
-      fetch("/customize", { method:"POST", body:formData })
-        .then(()=>alert("💾 끼리 옷 저장 완료!"))
-        .catch(()=>alert("⚠️ 저장 중 오류 발생"));
+      
+      fetch("{{ url_for('customize') }}", { 
+          method:"POST", 
+          body:formData 
+      })
+      .then(response => response.json()) // JSON 응답을 받음
+      .then(data => {
+          if(data.success) {
+              alert("💾 끼리 옷 저장 완료!");
+          } else {
+              alert("⚠️ 저장 중 오류 발생: " + data.message);
+          }
+      })
+      .catch((error) => {
+          console.error("Error:", error);
+          alert("⚠️ 통신 중 오류가 발생했습니다.");
+      });
     });
   </script>
 </body>
