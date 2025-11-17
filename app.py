@@ -129,7 +129,7 @@ def login():
         if user and check_password_hash(user.password, password):
             login_user(user, remember=True)
             session.permanent = True
-            session["mascot"] = user.mascot  # 로그인 시 마스코트 로드
+            session["mascot"] = user.mascot
             return redirect(url_for("chat_page"))
         else:
             flash("로그인 실패. 아이디나 비밀번호를 확인하세요.")
@@ -146,10 +146,36 @@ def logout():
     return redirect(url_for("login"))
 
 
+# 🆕 브라우저 세션 시작 시 인사 메시지 자동 추가 함수
+def add_greeting_if_needed(user_id):
+    """브라우저를 새로 열어서 접속한 경우에만 끼리의 인사 메시지를 추가"""
+    # 이번 세션에서 이미 인사했는지 확인
+    if session.get('greeted'):
+        return  # 이미 인사함
+    
+    # 기존 인사 메시지
+    greeting_message = "안녕~ 오늘 뭐 했어?"
+    
+    # 챗봇 인사 메시지 추가
+    new_greeting = ChatLog(
+        user_id=user_id,
+        role="bot",
+        message=greeting_message
+    )
+    db.session.add(new_greeting)
+    db.session.commit()
+    
+    # 이번 세션에서 인사했다고 표시
+    session['greeted'] = True
+
+
 # 채팅 페이지
 @app.route("/")
 @login_required
 def chat_page():
+    # 🆕 브라우저를 새로 열었을 때만 인사 추가
+    add_greeting_if_needed(current_user.id)
+    
     logs = (
         ChatLog.query.filter_by(user_id=current_user.id)
         .order_by(ChatLog.timestamp)
@@ -161,50 +187,36 @@ def chat_page():
     )
 
 
-# --- [수정됨] 꾸미기 (마스코트 선택) ---
+# 꾸미기 (마스코트 선택)
 @app.route("/customize", methods=["GET", "POST"])
 @login_required
 def customize():
-    # --- 1. [수정] 전체 마스코트 리스트 정의 (00 ~ 19) ---
     all_mascots = [f"mascot{i:02d}.png" for i in range(20)] 
 
-    
-    # acc: 00 ~ 14 (15개)
     acc_emojis = [
-        "🎀", "🎉", "🌟", "🧢", "👒", "🕶", "🌿", "🎵", 
+        "🎀", "🎉", "🌟", "🧢", "👑", "🕶", "🌿", "🎵", 
         "👽", "✨", "👾", "🧣", "📕", "🥖", "🛟"
     ]
-    # clothes: 15 ~ 19 (5개)
-    clothes_emojis = ["🧥", "🧑🏻‍🎄", "💩", "👩","👨"]
+    clothes_emojis = ["🧥", "🧑🏻‍🎄", "👩", "👩","👨"]
 
-
-    # --- 3. [수정] 파일명 리스트 생성 ---
-    acc_list = [f"mascot{i:02d}.png" for i in range(15)] # 0~14
+    acc_list = [f"mascot{i:02d}.png" for i in range(15)]
     clothes_list = [f"mascot{i:02d}.png" for i in range(15, 20)]
 
-
-    # --- 4. [수정] 파일명과 이모지를 짝지어 템플릿으로 전달 ---
     acc_data = list(zip(acc_list, acc_emojis))
     clothes_data = list(zip(clothes_list, clothes_emojis))
 
-
     if request.method == "POST":
-        # --- "저장하기" (Fetch) 요청을 처리 ---
         selected = request.form.get("mascot")
         
-        # all_mascots가 range(21)로 수정되었으므로 이 로직은 그대로 작동합니다.
         if selected in all_mascots:
             current_user.mascot = selected
             db.session.commit()
             session["mascot"] = selected
             
-            # fetch 요청에 성공 응답(JSON)을 보냄
             return jsonify({"success": True, "message": "저장 완료!"})
         
         return jsonify({"success": False, "message": "잘못된 파일입니다."}), 400
 
-    # --- 5. [수정] GET 요청 시 (페이지 첫 로드) ---
-    # 템플릿에 짝지어진 (파일+이모지) 데이터 리스트 2개 전달
     return render_template(
         "customize.html",
         acc_data=acc_data,
@@ -212,7 +224,6 @@ def customize():
 
 
 # 챗봇 로직
-# (chat_logic.py 파일이 별도로 존재한다고 가정)
 from chat_logic import classify_and_respond
 
 
@@ -222,12 +233,10 @@ def chat():
     user_id = current_user.id
     message = request.form.get("message")
 
-    # Import here to avoid circular imports
     from chat_logic import classify_and_respond
 
     bot_reply = classify_and_respond(message, user_id)
 
-    # Use current app context
     db.session.add(ChatLog(user_id=user_id, role="user", message=message))
     db.session.add(ChatLog(user_id=user_id, role="bot", message=bot_reply))
     db.session.commit()
@@ -244,8 +253,7 @@ def reset_chat():
     return jsonify({"message": "Chat history cleared."})
 
 
-# --- 이모티콘 경로 매핑 ---
-# 5개의 이모티콘 이미지는 'static/images/' 폴더 안에 있어야 합니다.
+# 이모티콘 경로 매핑
 IMAGE_DIR = os.path.join("static", "result")
 EMOTION_IMAGES = {
     "정상": os.path.join(IMAGE_DIR, "환하게 웃는 끼리.png"),
@@ -272,9 +280,8 @@ def get_emotion_image_path(score):
         return EMOTION_IMAGES["중증 우울"]
 
 
-# --- 감정 분석 및 리포트 생성 함수 (Y축 숨기기 적용) ---
+# 감정 분석 및 리포트 생성 함수
 def generate_emotion_report(user_id):
-# UTC에 9시간 더해서 한국 시간으로 변환
     kst_offset = timedelta(hours=9)
     now_kst = datetime.utcnow() + kst_offset
     
@@ -299,17 +306,15 @@ def generate_emotion_report(user_id):
         "불안",
     ]
 
-    # 최근 7일간의 모든 날짜를 포함하도록 daily_score 초기화 (한국 시간 기준)
     daily_score = {
         (now_kst.date() - timedelta(days=i)): 0 for i in range(6, -1, -1)
-    }  # 7일 전 ~ 오늘
+    }
 
     for log in logs:
-        # UTC로 저장된 timestamp를 한국 시간으로 변환
         log_time_kst = log.timestamp + kst_offset
         date = log_time_kst.date()
         
-        if date in daily_score:  # 7일 이내의 로그만 집계
+        if date in daily_score:
             score = sum(1 for kw in mood_keywords if kw in log.message)
             daily_score[date] = daily_score.get(date, 0) + score
 
@@ -317,7 +322,6 @@ def generate_emotion_report(user_id):
     scores = [daily_score[d] for d in dates]
     total_score = sum(scores)
 
-    # PHQ-A 기반 해석 (이전과 동일)
     if total_score == 0:
         level, advice = (
             "정상 😊",
@@ -347,31 +351,28 @@ def generate_emotion_report(user_id):
         level, advice = "중증 우울 ⚠️", "심한 우울감이 보여. 꼭 주변에 도움을 요청하자."
 
     graph_filename = None
-    # 데이터가 아예 없거나(total_score == 0), 있더라도 모두 0인 경우(any(...) == False) 그래프를 그리지 않음
     if total_score > 0 or any(d in daily_score for d, s in zip(dates, scores)):
         try:
             fig, ax = plt.subplots(figsize=(8, 4))
-            fig.patch.set_facecolor("white")  # Figure 배경색
-            ax.set_facecolor("#f9f9f9")  # 그래프 배경색
+            fig.patch.set_facecolor("white")
+            ax.set_facecolor("#f9f9f9")
 
-            # 점수 연결선
             ax.plot(
                 dates, scores, color="#2a6fb4", linestyle="-", linewidth=2, zorder=1
             )
 
-            # 각 날짜별 이모티콘 표시
             for i, (date, score) in enumerate(zip(dates, scores)):
                 emotion_image_path = get_emotion_image_path(score)
 
                 if not os.path.exists(emotion_image_path):
                     print(f"Warning: Image file not found at {emotion_image_path}")
-                    continue  # 이미지 없으면 스킵
-                # Much smaller images
+                    continue
+                    
                 fig_width, fig_height = fig.get_size_inches()
                 num_points = len(dates)
                 dynamic_zoom = (min(fig_width, fig_height) / 130) * (
                     7 / max(num_points, 1)
-                )  # Changed from 30 to 100
+                )
 
                 img = mpimg.imread(emotion_image_path)
                 imagebox = OffsetImage(img, zoom=dynamic_zoom)
@@ -386,32 +387,20 @@ def generate_emotion_report(user_id):
                 )
                 ax.add_artist(ab)
 
-            # --- [수정됨] Y축 숨기기 ---
             ax.get_yaxis().set_visible(False)
-
-            # --- [수정됨] X축 설정 (날짜만 남기기) ---
-            ax.set_xlabel("")  # X축 레이블 제거
+            ax.set_xlabel("")
             ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%m/%d"))
-            plt.xticks(rotation=0, fontsize=10, color="#555555")  # X축 날짜 폰트
+            plt.xticks(rotation=0, fontsize=10, color="#555555")
             ax.tick_params(
                 axis="x", which="both", bottom=False, top=False
-            )  # X축 눈금선 제거
+            )
 
-            # --- [수정됨] Y축 관련 설정 제거 ---
-            ax.set_ylabel("")  # Y축 레이블 제거
-
-            # --- [수정됨] 그래프 테두리(spines) 모두 제거 ---
+            ax.set_ylabel("")
             ax.spines["top"].set_visible(False)
             ax.spines["right"].set_visible(False)
             ax.spines["bottom"].set_visible(False)
             ax.spines["left"].set_visible(False)
 
-            # --- [수정됨] 그리드 제거 ---
-            # ax.grid(True, alpha=0.3, linestyle='--') # 그리드 라인 제거
-
-            # --- [유지] Y축 범위 설정 ---
-            # Y축이 보이지 않더라도, 이모티콘이 잘리지 않도록
-            # 내부적으로 범위는 설정해 주어야 합니다.
             min_score = min(scores) - 1
             max_score = max(scores) + 2
             ax.set_ylim(min_score, max_score)
@@ -452,7 +441,7 @@ def analyze():
 def report():
     report_data = generate_emotion_report(current_user.id)
     return render_template(
-        "report.html",  # report.html 템플릿이 있다고 가정
+        "report.html",
         **report_data,
     )
 
