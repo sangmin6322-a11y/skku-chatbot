@@ -25,8 +25,6 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.offsetbox import OffsetImage, AnnotationBbox
-import matplotlib.image as mpimg
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -148,7 +146,7 @@ def logout():
 
 # 🆕 브라우저 세션 시작 시 인사 메시지 자동 추가 함수
 def add_greeting_if_needed(user_id):
-    """브라우저를 새로 열어서 접속한 경우에만 끼리의 인사 메시지를 추가"""
+    """브라우저를 새로 열어서 접속한 경우에만 라리의 인사 메시지를 추가"""
     # 이번 세션에서 이미 인사했는지 확인
     if session.get('greeted'):
         return  # 이미 인사함
@@ -253,33 +251,6 @@ def reset_chat():
     return jsonify({"message": "Chat history cleared."})
 
 
-# 이모티콘 경로 매핑
-IMAGE_DIR = os.path.join("static", "result")
-EMOTION_IMAGES = {
-    "정상": os.path.join(IMAGE_DIR, "환하게 웃는 끼리.png"),
-    "경미한 저하": os.path.join(IMAGE_DIR, "미소짓는 끼리.png"),
-    "약한 우울": os.path.join(IMAGE_DIR, "보통끼리.png"),
-    "중등도 우울": os.path.join(IMAGE_DIR, "살짞 슬픈끼리.png"),
-    "심한 우울": os.path.join(IMAGE_DIR, "우울한끼리.png"),
-    "중증 우울": os.path.join(IMAGE_DIR, "초고도심각 끼리.png"),
-}
-
-
-def get_emotion_image_path(score):
-    if score == 0:
-        return EMOTION_IMAGES["정상"]
-    elif 1 <= score <= 4:
-        return EMOTION_IMAGES["경미한 저하"]
-    elif 5 <= score <= 9:
-        return EMOTION_IMAGES["약한 우울"]
-    elif 10 <= score <= 14:
-        return EMOTION_IMAGES["중등도 우울"]
-    elif 15 <= score <= 19:
-        return EMOTION_IMAGES["심한 우울"]
-    else:
-        return EMOTION_IMAGES["중증 우울"]
-
-
 # 감정 분석 및 리포트 생성 함수
 def generate_emotion_report(user_id):
     kst_offset = timedelta(hours=9)
@@ -329,12 +300,12 @@ def generate_emotion_report(user_id):
         )
     elif 1 <= total_score <= 4:
         level, advice = (
-            "경미한 저하 😐",
+            "경미한 저하 😀",
             "잠깐 기분이 저하된 상태일 수도 있겠다. 가벼운 산책 추천해.",
         )
     elif 5 <= total_score <= 9:
         level, advice = (
-            "약한 우울 😔",
+            "약한 우울 😐",
             "약간 우울한 기분이 느껴져. 수면이나 식습관을 규칙적으로 해보자.",
         )
     elif 10 <= total_score <= 14:
@@ -353,65 +324,72 @@ def generate_emotion_report(user_id):
     graph_filename = None
     if total_score > 0 or any(d in daily_score for d, s in zip(dates, scores)):
         try:
+            # 우울 점수를 6단계로 변환하는 함수
+            def score_to_level(score):
+                if score == 0:
+                    return 0  # 정상
+                elif 1 <= score <= 4:
+                    return 1  # 경미한 저하
+                elif 5 <= score <= 9:
+                    return 2  # 약한 우울
+                elif 10 <= score <= 14:
+                    return 3  # 중등도 우울
+                elif 15 <= score <= 19:
+                    return 4  # 심한 우울
+                else:
+                    return 5  # 중증 우울
+            
+            # 점수를 레벨로 변환
+            level_scores = [score_to_level(s) for s in scores]
+            
             fig, ax = plt.subplots(figsize=(8, 4))
             fig.patch.set_facecolor("white")
             ax.set_facecolor("#f9f9f9")
 
+            # 선 그래프 그리기
             ax.plot(
-                dates, scores, color="#2a6fb4", linestyle="-", linewidth=2, zorder=1
+                dates, level_scores, color="#2a6fb4", linestyle="-", linewidth=2, 
+                marker='o', markersize=8, markerfacecolor='#2a6fb4', 
+                markeredgecolor='white', markeredgewidth=2, zorder=2
             )
 
-            for i, (date, score) in enumerate(zip(dates, scores)):
-                emotion_image_path = get_emotion_image_path(score)
+            # Y축 범위 설정 (0~5, 6단계)
+            ax.set_ylim(-0.5, 5.5)
+            ax.invert_yaxis()  # Y축 반전 (0이 위, 5가 아래)
 
-                if not os.path.exists(emotion_image_path):
-                    print(f"Warning: Image file not found at {emotion_image_path}")
-                    continue
-                    
-                fig_width, fig_height = fig.get_size_inches()
-                num_points = len(dates)
-                dynamic_zoom = (min(fig_width, fig_height) / 130) * (
-                    7 / max(num_points, 1)
-                )
+            # Y축에 텍스트 이모티콘 추가
+            # 환하게 웃는 이모지 (Y축 상단, level=0)
+            ax.text(-0.15, 0, '😊', transform=ax.get_yaxis_transform(), 
+                   fontsize=30, ha='center', va='center')
+            
+            # 슬프게 우는 이모지 (Y축 하단, level=5)
+            ax.text(-0.15, 5, '😢', transform=ax.get_yaxis_transform(), 
+                   fontsize=30, ha='center', va='center')
 
-                img = mpimg.imread(emotion_image_path)
-                imagebox = OffsetImage(img, zoom=dynamic_zoom)
-                ab = AnnotationBbox(
-                    imagebox,
-                    (date, score),
-                    xybox=(0, 0),
-                    xycoords="data",
-                    boxcoords="offset points",
-                    frameon=False,
-                    zorder=2,
-                )
-                ax.add_artist(ab)
-
-            ax.get_yaxis().set_visible(False)
+            # Y축 눈금 설정 (0~5)
+            ax.set_yticks([0, 1, 2, 3, 4, 5])
+            ax.set_yticklabels([])  # 숫자는 숨기기
+            
+            # X축 설정
             ax.set_xlabel("")
             ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%m/%d"))
             plt.xticks(rotation=0, fontsize=10, color="#555555")
-            ax.tick_params(
-                axis="x", which="both", bottom=False, top=False
-            )
+            ax.tick_params(axis="x", which="both", bottom=False, top=False)
+            ax.tick_params(axis="y", which="both", left=False, right=False)
 
+            # 테두리 제거
             ax.set_ylabel("")
             ax.spines["top"].set_visible(False)
             ax.spines["right"].set_visible(False)
             ax.spines["bottom"].set_visible(False)
             ax.spines["left"].set_visible(False)
 
-            min_score = min(scores) - 1
-            max_score = max(scores) + 2
-            ax.set_ylim(min_score, max_score)
-            ax.invert_yaxis()
-
             plt.tight_layout()
             os.makedirs("static", exist_ok=True)
 
             graph_filename = f"mood_graph_{user_id}.png"
             graph_full_path = os.path.join("static", graph_filename)
-            plt.savefig(graph_full_path)
+            plt.savefig(graph_full_path, dpi=100, bbox_inches='tight')
             plt.close()
 
         except Exception as e:
@@ -450,3 +428,4 @@ def report():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
